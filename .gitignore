@@ -1,0 +1,43 @@
+# Virtual environment
+.venv/
+venv/
+
+# Environment variables - НИКОГДА НЕ КОММИТЬ!
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Database files (если есть локальные)
+*.db
+*.sqlite3
+
+# MinIO local storage
+minio_data/
+
+# Certificates (если генерируете локально)
+certs/*.key
+certs/*.crt
+!certs/example.*  # кроме примеров
+
+# Build artifacts
+dist/
+build/
+
+# Temporary files
+tmp/
+temp/
