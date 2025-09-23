@@ -58,6 +58,20 @@ services:
     volumes:
       - .:/app
 
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: psih-pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: tim2004timi@mail.ru
+      PGADMIN_DEFAULT_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+    networks:
+      - psih_network
+    restart: unless-stopped
+
 volumes:
   minio_data:
     driver: local
