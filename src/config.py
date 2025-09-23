@@ -4,6 +4,9 @@ from typing import Optional
 from functools import lru_cache
 
 class Settings(BaseSettings):
+    # Host
+    HOST: str = "localhost"
+
     # Database settings
     POSTGRES_DB: str
     POSTGRES_USER: str
@@ -21,6 +24,7 @@ class Settings(BaseSettings):
     
     # MinIO settings
     MINIO_ENDPOINT: str = "psih-minio:9000"
+    MINIO_PORT: str = "9000"
     MINIO_ACCESS_KEY: str
     MINIO_SECRET_KEY: str
     MINIO_SECURE: bool = False

@@ -29,6 +29,7 @@ class UserUpdate(BaseModel):
 class UserInDB(UserBase):
     id: int
     email_verified: bool
+    is_admin: bool
     is_active: bool
     created_at: datetime
     updated_at: datetime

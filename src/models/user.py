@@ -17,6 +17,7 @@ class User(Base):
     postal_code = Column(String(10), nullable=True)
     country = Column(String(50), default="Russia")
     email_verified = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     is_active = Column(Boolean, default=True)

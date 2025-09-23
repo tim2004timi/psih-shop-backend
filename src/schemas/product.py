@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
 from src.models.product import ProductStatus
 
@@ -43,11 +43,51 @@ class ProductInDB(ProductBase):
     class Config:
         from_attributes = True
 
-class ProductResponse(ProductInDB):
-    pass
+class ProductColorOut(BaseModel):
+    code: str
+    label: str
+    hex: str
+
+class ProductColorIn(BaseModel):
+    id: str
+    code: str
+    label: str
+    hex: str
+
+class ProductImageOut(BaseModel):
+    file: str
+    alt: Optional[str] = None
+    w: Optional[int] = None
+    h: Optional[int] = None
+    color: Optional[str] = None
+
+class ProductMeta(BaseModel):
+    care: Optional[str] = None
+    shipping: Optional[str] = None
+    returns: Optional[str] = None
+
+class ProductPublic(BaseModel):
+    id: str
+    slug: str
+    title: str
+    categoryPath: List[str] = Field(default_factory=list)
+    price: Decimal
+    currency: str
+    colors: List[ProductColorOut] = Field(default_factory=list)
+    sizes: List[str] = Field(default_factory=list)
+    composition: Optional[str] = None
+    fit: Optional[str] = None
+    description: Optional[str] = None
+    images: List[ProductImageOut] = Field(default_factory=list)
+    meta: ProductMeta
+    status: ProductStatus
+
+class ProductSizeIn(BaseModel):
+    id: str
+    size: str
 
 class ProductList(BaseModel):
-    products: list[ProductResponse]
+    products: list[ProductPublic]
     total: int
     skip: int
     limit: int

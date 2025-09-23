@@ -10,6 +10,8 @@ from src.database import create_tables, check_db_connection
 from src.auth import router as auth_router
 from src.routers.user import router as user_router
 from src.routers.product import router as product_router
+from src.routers.category import router as category_router
+from src.routers.collection import router as collection_router
 
 
 app = FastAPI(
@@ -46,14 +48,9 @@ main_router = APIRouter(prefix="/api")
 main_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 main_router.include_router(user_router, tags=["Users"])
 main_router.include_router(product_router, tags=["Products"])
+main_router.include_router(category_router, tags=["Categories"])
+main_router.include_router(collection_router, tags=["Collections"])
 
 app.include_router(main_router)
-# Health check endpoint
-@app.get("/", tags=["Health"])
-async def root():
-    return {
-        "message": "Psih Shop API is running!",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
+
 

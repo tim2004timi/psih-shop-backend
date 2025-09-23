@@ -28,7 +28,8 @@ async def create_user(db: AsyncSession, user_create: UserCreate) -> User:
         address=user_create.address,
         city=user_create.city,
         postal_code=user_create.postal_code,
-        country=user_create.country
+        country=user_create.country,
+        is_admin=False
     )
     db.add(db_user)
     await db.commit()

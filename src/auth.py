@@ -78,6 +78,7 @@ async def get_current_user(
         "city": user.city,
         "postal_code": user.postal_code,
         "country": user.country,
+        "is_admin": user.is_admin,
         "is_active": user.is_active,
         "email_verified": user.email_verified,
         "created_at": user.created_at,
@@ -114,7 +115,8 @@ async def login_for_access_token(
             "id": user.id,
             "email": user.email,
             "first_name": user.first_name,
-            "last_name": user.last_name
+            "last_name": user.last_name,
+            "is_admin": user.is_admin
         }
     }
 
@@ -152,7 +154,8 @@ async def register_user(
             "id": user.id,
             "email": user.email,
             "first_name": user.first_name,
-            "last_name": user.last_name
+            "last_name": user.last_name,
+            "is_admin": user.is_admin
         }
     }
 
