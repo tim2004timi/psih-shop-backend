@@ -16,6 +16,7 @@ class Product(Base):
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     price = Column(Numeric(10, 2), nullable=False)
+    discount_price = Column(Numeric(10, 2), nullable=True)
     currency = Column(String(3), default="EUR")
     composition = Column(String(200), nullable=True)
     fit = Column(String(50), nullable=True)

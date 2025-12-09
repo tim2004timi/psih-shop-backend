@@ -33,6 +33,7 @@ async def products_by_category(slug: str, db: AsyncSession = Depends(get_db)):
                 title=p.title,
                 categoryPath=[],
                 price=p.price,
+                discount_price=p.discount_price,
                 currency=p.currency,
                 colors=colors_map.get(p.id, []),
                 sizes=sizes_map.get(p.id, []),

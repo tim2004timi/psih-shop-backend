@@ -9,6 +9,7 @@ class ProductBase(BaseModel):
     title: str = Field(..., max_length=200, description="Название продукта")
     description: Optional[str] = Field(None, description="Описание продукта")
     price: Decimal = Field(..., decimal_places=2, description="Цена продукта")
+    discount_price: Optional[Decimal] = Field(None, decimal_places=2, description="Цена со скидкой")
     currency: str = Field(default="EUR", max_length=3, description="Валюта")
     composition: Optional[str] = Field(None, max_length=200, description="Состав продукта")
     fit: Optional[str] = Field(None, max_length=50, description="Посадка/размер")
@@ -26,6 +27,7 @@ class ProductUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = None
     price: Optional[Decimal] = Field(None, decimal_places=2)
+    discount_price: Optional[Decimal] = Field(None, decimal_places=2)
     currency: Optional[str] = Field(None, max_length=3)
     composition: Optional[str] = Field(None, max_length=200)
     fit: Optional[str] = Field(None, max_length=50)
@@ -72,6 +74,7 @@ class ProductPublic(BaseModel):
     title: str
     categoryPath: List[str] = Field(default_factory=list)
     price: Decimal
+    discount_price: Optional[Decimal] = None
     currency: str
     colors: List[ProductColorOut] = Field(default_factory=list)
     sizes: List[str] = Field(default_factory=list)

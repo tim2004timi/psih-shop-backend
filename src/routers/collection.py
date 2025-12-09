@@ -104,6 +104,7 @@ async def get_collection_products(
             title=p.title,
             categoryPath=[],
             price=p.price,
+            discount_price=p.discount_price,
             currency=p.currency,
             colors=colors_map.get(p.id, []),
             sizes=sizes_map.get(p.id, []),

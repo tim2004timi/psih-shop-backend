@@ -40,6 +40,7 @@ async def get_products(
             title=p.title,
             categoryPath=[],
             price=p.price,
+            discount_price=p.discount_price,
             currency=p.currency,
             colors=colors_map.get(p.id, []),
             sizes=sizes_map.get(p.id, []),
@@ -213,6 +214,7 @@ async def get_product_by_id(
         title=product.title,
         categoryPath=[],
         price=product.price,
+        discount_price=product.discount_price,
         currency=product.currency,
         colors=colors_map.get(product.id, []),
         sizes=sizes_map.get(product.id, []),
@@ -248,6 +250,7 @@ async def get_product_by_slug(
         title=product.title,
         categoryPath=[],
         price=product.price,
+        discount_price=product.discount_price,
         currency=product.currency,
         colors=colors_map.get(product.id, []),
         sizes=sizes_map.get(product.id, []),
@@ -298,6 +301,7 @@ async def create_product(
         title=product.title,
         categoryPath=[],
         price=product.price,
+        discount_price=product.discount_price,
         currency=product.currency,
         colors=[],
         sizes=[],
@@ -350,13 +354,17 @@ async def update_product(
         title=product.title,
         categoryPath=[],
         price=product.price,
+        discount_price=product.discount_price,
         currency=product.currency,
         colors=colors_map.get(product.id, []),
         sizes=sizes_map.get(product.id, []),
         composition=product.composition,
         fit=product.fit,
         description=product.description,
-        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],)
+        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
+        meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
+        status=product.status,
+    )
 
 @router.get("/{product_id}/images", summary="Список изображений продукта")
 async def list_images(product_id: str, db: AsyncSession = Depends(get_db)):
@@ -450,6 +458,7 @@ async def update_product_status(
         title=product.title,
         categoryPath=[],
         price=product.price,
+        discount_price=product.discount_price,
         currency=product.currency,
         colors=colors_map.get(product.id, []),
         sizes=sizes_map.get(product.id, []),
