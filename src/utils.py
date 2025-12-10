@@ -6,9 +6,10 @@ import uuid
 import os
 from src.config import settings
 import mimetypes
+import bcrypt
 
 # Настройка для хеширования паролей
-# Явно указываем backend для избежания проблем с автоматическим определением
+# Используем bcrypt напрямую для избежания проблем с автоматическим определением backend в passlib
 pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto",
@@ -31,14 +32,31 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         plain_password = password_bytes[:72].decode('utf-8', errors='ignore')
     
     try:
-        return pwd_context.verify(plain_password, hashed_password)
+        # Используем bcrypt напрямую для избежания проблем с passlib
+        return bcrypt.checkpw(
+            plain_password.encode('utf-8'),
+            hashed_password.encode('utf-8')
+        )
     except (ValueError, TypeError, Exception):
-        # Если хеш некорректен или произошла другая ошибка
-        return False
+        # Если хеш некорректен или произошла другая ошибка, пробуем через passlib
+        try:
+            return pwd_context.verify(plain_password, hashed_password)
+        except (ValueError, TypeError, Exception):
+            return False
 
 def get_password_hash(password: str) -> str:
     """Генерирует хеш пароля"""
-    return pwd_context.hash(password)
+    # Bcrypt имеет ограничение в 72 байта для пароля
+    # Обрезаем пароль, если он длиннее
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+    
+    # Используем bcrypt напрямую для избежания проблем с passlib
+    # Генерируем соль и хешируем пароль
+    salt = bcrypt.gensalt(rounds=12)
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
 
 
 def get_minio_client() -> Minio:
