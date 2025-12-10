@@ -36,6 +36,8 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> Opti
     user = await crud.get_user_by_email(db, email)
     if not user:
         return None
+    if not user.password_hash:
+        return None
     if not verify_password(password, user.password_hash):
         return None
     return user

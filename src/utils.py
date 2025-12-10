@@ -8,11 +8,33 @@ from src.config import settings
 import mimetypes
 
 # Настройка для хеширования паролей
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Явно указываем backend для избежания проблем с автоматическим определением
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__rounds=12
+)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Проверяет соответствие пароля и хеша"""
-    return pwd_context.verify(plain_password, hashed_password)
+    if not hashed_password or not plain_password:
+        return False
+    
+    # Проверяем, что хеш имеет правильный формат bcrypt
+    if not hashed_password.startswith(('$2a$', '$2b$', '$2y$')):
+        return False
+    
+    # Bcrypt имеет ограничение в 72 байта для пароля
+    # Обрезаем пароль, если он длиннее
+    password_bytes = plain_password.encode('utf-8')
+    if len(password_bytes) > 72:
+        plain_password = password_bytes[:72].decode('utf-8', errors='ignore')
+    
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except (ValueError, TypeError, Exception):
+        # Если хеш некорректен или произошла другая ошибка
+        return False
 
 def get_password_hash(password: str) -> str:
     """Генерирует хеш пароля"""
