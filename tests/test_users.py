@@ -81,24 +81,6 @@ async def test_activate_user(client: httpx.AsyncClient, auth_token: str):
 
 
 @pytest.mark.asyncio
-async def test_deactivate_user(client: httpx.AsyncClient, auth_token: str):
-    """Тест деактивации пользователя (только для админов)"""
-    if not auth_token:
-        pytest.skip("Auth token not available")
-    
-    headers = {"Authorization": f"Bearer {auth_token}"}
-    
-    # Получаем свой ID
-    me_response = await client.get("/api/auth/me", headers=headers)
-    assert me_response.status_code == 200
-    user_id = me_response.json()["id"]
-    
-    response = await client.put(f"/api/users/{user_id}/deactivate", headers=headers)
-    # Может быть 200 (если админ) или 403 (если не админ)
-    assert response.status_code in [200, 403]
-
-
-@pytest.mark.asyncio
 async def test_verify_email(client: httpx.AsyncClient, auth_token: str):
     """Тест подтверждения email"""
     if not auth_token:

@@ -68,53 +68,82 @@
 
 ### 2. Получить продукт по ID
 
-**URL:** `GET /products/{product_color_id}`
+**URL:** `GET /products/{product_id}`
 
-**Описание:** Получает информацию о продукте по ID цвета продукта (product_color_id).
+**Описание:** Получает детальную информацию о продукте по его ID со всеми цветами, изображениями и размерами.
 
 **Входные данные (Path параметры):**
-- `product_color_id` (int, обязательно) - ID цвета продукта
+- `product_id` (int, обязательно) - ID базового продукта
 
 **Выходные данные:**
 ```json
 {
   "id": 1,
-  "slug": "basic-tshirt-red",
-  "title": "Basic T-Shirt",
-  "categoryPath": [],
+  "description": "Comfortable basic t-shirt",
   "price": "29.99",
   "discount_price": "24.99",
   "currency": "EUR",
-  "label": "Red",
-  "hex": "#FF0000",
-  "sizes": [
-    {
-      "size": "S",
-      "quantity": 10
-    },
-    {
-      "size": "M",
-      "quantity": 15
-    }
-  ],
   "composition": "100% Cotton",
   "fit": "Regular",
-  "description": "Comfortable basic t-shirt",
-  "images": [
+  "status": "in_stock",
+  "is_pre_order": false,
+  "meta_care": "Machine wash",
+  "meta_shipping": "Free shipping",
+  "meta_returns": "30 days return",
+  "colors": [
     {
-      "file": "http://localhost:9000/photos/uuid.png",
-      "alt": null,
-      "w": null,
-      "h": null,
-      "color": null
+      "color_id": 1,
+      "slug": "basic-tshirt-red",
+      "title": "Basic T-Shirt",
+      "label": "Red",
+      "hex": "#FF0000",
+      "images": [
+        {
+          "file": "http://localhost:9000/photos/uuid.png",
+          "alt": null,
+          "w": null,
+          "h": null,
+          "color": null
+        }
+      ],
+      "sizes": [
+        {
+          "size": "S",
+          "quantity": 10
+        },
+        {
+          "size": "M",
+          "quantity": 15
+        }
+      ]
+    },
+    {
+      "color_id": 2,
+      "slug": "basic-tshirt-blue",
+      "title": "Basic T-Shirt",
+      "label": "Blue",
+      "hex": "#0000FF",
+      "images": [
+        {
+          "file": "http://localhost:9000/photos/uuid2.png",
+          "alt": null,
+          "w": null,
+          "h": null,
+          "color": null
+        }
+      ],
+      "sizes": [
+        {
+          "size": "S",
+          "quantity": 5
+        },
+        {
+          "size": "M",
+          "quantity": 8
+        }
+      ]
     }
-  ],
-  "meta": {
-    "care": "Machine wash",
-    "shipping": "Free shipping",
-    "returns": "30 days return"
-  },
-  "status": "in_stock"
+  ]
 }
 ```
 

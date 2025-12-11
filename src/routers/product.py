@@ -9,7 +9,7 @@ from src.auth import get_current_user
 from src import crud
 from src.schemas.product import (
     ProductCreate, ProductUpdate, ProductList, ProductPublic, ProductMeta,
-    ProductColorIn, ProductSizeIn, ProductColorUpdate
+    ProductColorIn, ProductSizeIn, ProductColorUpdate, ProductDetail, ProductColorDetail
 )
 from src.models.product import ProductStatus, Product, ProductColor
 from src.utils import upload_image_and_derivatives
@@ -75,51 +75,6 @@ async def get_products(
         total=total,
         skip=skip,
         limit=limit
-    )
-
-@router.get("/{product_color_id}", 
-    response_model=ProductPublic,
-    summary="Получить продукт по ID",
-    description="Получает информацию о продукте по его ID (ID цвета продукта)")
-async def get_product_by_id(
-    product_color_id: int,
-    db: AsyncSession = Depends(get_db)
-):
-    """Получить продукт по ID цвета"""
-    product_color = await crud.get_product_color_by_id(db, product_color_id)
-    if not product_color:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found"
-        )
-    
-    product = await crud.get_product_by_id(db, product_color.product_id)
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found"
-        )
-    
-    sizes_map = await crud.get_sizes_for_products(db, [product_color_id])
-    images = await crud.list_product_images(db, product_color_id)
-    
-    return ProductPublic(
-        id=product_color.id,
-        slug=product_color.slug,
-        title=product_color.title,
-        categoryPath=[],
-        price=product.price,
-        discount_price=product.discount_price,
-        currency=product.currency,
-        label=product_color.label,
-        hex=product_color.hex,
-        sizes=sizes_map.get(product_color_id, []),
-        composition=product.composition,
-        fit=product.fit,
-        description=product.description,
-        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
-        meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-        status=product.status,
     )
 
 @router.get("/slug/{slug}", 
@@ -450,3 +405,78 @@ async def remove_product_collection(
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
     return
+
+@router.get("/{product_id}", 
+    response_model=ProductDetail,
+    summary="Получить продукт по ID",
+    description="Получает детальную информацию о продукте по его ID со всеми цветами, изображениями и размерами")
+async def get_product_by_id(
+    product_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получить продукт по ID со всеми цветами"""
+    product = await crud.get_product_by_id(db, product_id)
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+    
+    # Получаем все цвета продукта
+    colors = await crud.list_product_colors(db, product_id)
+    if not colors:
+        # Если нет цветов, возвращаем продукт с пустым списком цветов
+        return ProductDetail(
+            id=product.id,
+            description=product.description,
+            price=product.price,
+            discount_price=product.discount_price,
+            currency=product.currency,
+            composition=product.composition,
+            fit=product.fit,
+            status=product.status,
+            is_pre_order=product.is_pre_order,
+            meta_care=product.meta_care,
+            meta_shipping=product.meta_shipping,
+            meta_returns=product.meta_returns,
+            colors=[]
+        )
+    
+    # Получаем все ID цветов для загрузки изображений и размеров
+    color_ids = [color.id for color in colors]
+    
+    # Загружаем изображения и размеры для всех цветов
+    images_map = await crud.get_images_for_products(db, color_ids)
+    sizes_map = await crud.get_sizes_for_products(db, color_ids)
+    
+    # Формируем список цветов с изображениями и размерами
+    colors_detail = []
+    for color in colors:
+        images = images_map.get(color.id, [])
+        sizes = sizes_map.get(color.id, [])
+        
+        colors_detail.append(ProductColorDetail(
+            color_id=color.id,
+            slug=color.slug,
+            title=color.title,
+            label=color.label,
+            hex=color.hex,
+            images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
+            sizes=sizes
+        ))
+    
+    return ProductDetail(
+        id=product.id,
+        description=product.description,
+        price=product.price,
+        discount_price=product.discount_price,
+        currency=product.currency,
+        composition=product.composition,
+        fit=product.fit,
+        status=product.status,
+        is_pre_order=product.is_pre_order,
+        meta_care=product.meta_care,
+        meta_shipping=product.meta_shipping,
+        meta_returns=product.meta_returns,
+        colors=colors_detail
+    )

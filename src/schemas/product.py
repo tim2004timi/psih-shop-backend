@@ -127,3 +127,29 @@ class ProductList(BaseModel):
     total: int
     skip: int
     limit: int
+
+class ProductColorDetail(BaseModel):
+    """Детальная информация о цвете продукта"""
+    color_id: int
+    slug: str
+    title: str
+    label: str
+    hex: str
+    images: List[ProductImageOut] = Field(default_factory=list)
+    sizes: List[dict] = Field(default_factory=list)  # список размеров с количеством
+
+class ProductDetail(BaseModel):
+    """Детальная информация о продукте со всеми цветами"""
+    id: int
+    description: Optional[str] = None
+    price: Decimal
+    discount_price: Optional[Decimal] = None
+    currency: str
+    composition: Optional[str] = None
+    fit: Optional[str] = None
+    status: ProductStatus
+    is_pre_order: bool
+    meta_care: Optional[str] = None
+    meta_shipping: Optional[str] = None
+    meta_returns: Optional[str] = None
+    colors: List[ProductColorDetail] = Field(default_factory=list)
