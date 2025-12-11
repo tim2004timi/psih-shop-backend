@@ -3,17 +3,16 @@ from typing import Optional, List
 
 
 class CategoryCreate(BaseModel):
-    id: str
     name: str
     slug: str
-    parent_id: Optional[str] = None
+    parent_id: Optional[int] = None
     level: int = 0
     sort_order: int = 0
     is_active: bool = True
 
 
 class CategoryNode(BaseModel):
-    id: str
+    id: int
     name: str
     slug: str
     children: List["CategoryNode"] = []

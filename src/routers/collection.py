@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-import uuid
 
 from src.database import get_db
 from src.auth import get_current_user
@@ -55,7 +54,7 @@ async def get_collections(
 
 @router.get("/{collection_id}", response_model=CollectionResponse, summary="Получить коллекцию по ID")
 async def get_collection(
-    collection_id: str,
+    collection_id: int,
     db: AsyncSession = Depends(get_db)
 ):
     """Получить коллекцию по ID с изображениями."""
@@ -85,35 +84,59 @@ async def get_collection(
 
 @router.get("/{collection_id}/products", response_model=List[ProductPublic], summary="Получить продукты коллекции")
 async def get_collection_products(
-    collection_id: str,
+    collection_id: int,
     db: AsyncSession = Depends(get_db)
 ):
     """Получить продукты, принадлежащие коллекции."""
-    products = await crud.get_products_by_collection(db, collection_id)
+    from sqlalchemy import select
+    from src.models.product import Product, ProductColor
     
-    ids = [p.id for p in products]
-    colors_map = await crud.get_colors_for_products(db, ids)
-    sizes_map = await crud.get_sizes_for_products(db, ids)
-    images_map = await crud.get_images_for_products(db, ids)
+    # Получаем базовые продукты из коллекции
+    products = await crud.get_products_by_collection(db, collection_id)
+    if not products:
+        return []
+    
+    # Получаем все цвета для этих продуктов
+    product_ids = [p.id for p in products]
+    result = await db.execute(
+        select(ProductColor).where(ProductColor.product_id.in_(product_ids))
+    )
+    product_colors = result.scalars().all()
+    
+    if not product_colors:
+        return []
+    
+    # Получаем размеры и изображения
+    color_ids = [pc.id for pc in product_colors]
+    sizes_map = await crud.get_sizes_for_products(db, color_ids)
+    images_map = await crud.get_images_for_products(db, color_ids)
+    
+    # Создаем map продуктов
+    products_map = {p.id: p for p in products}
 
     public_products = []
-    for p in products:
+    for pc in product_colors:
+        product = products_map.get(pc.product_id)
+        if not product:
+            continue
+        
         public_products.append(ProductPublic(
-            id=p.id,
-            slug=p.slug,
-            title=p.title,
+            id=pc.id,
+            slug=pc.slug,
+            title=pc.title,
             categoryPath=[],
-            price=p.price,
-            discount_price=p.discount_price,
-            currency=p.currency,
-            colors=colors_map.get(p.id, []),
-            sizes=sizes_map.get(p.id, []),
-            composition=p.composition,
-            fit=p.fit,
-            description=p.description,
-            images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(p.id, [])],
-            meta=ProductMeta(care=p.meta_care, shipping=p.meta_shipping, returns=p.meta_returns),
-            status=p.status,
+            price=product.price,
+            discount_price=product.discount_price,
+            currency=product.currency,
+            label=pc.label,
+            hex=pc.hex,
+            sizes=sizes_map.get(pc.id, []),
+            composition=product.composition,
+            fit=product.fit,
+            description=product.description,
+            images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
+            meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
+            status=product.status,
         ))
     return public_products
 
@@ -127,11 +150,6 @@ async def create_collection(
     """Создать новую коллекцию (только для админов)."""
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-    
-    # Check if collection with this ID already exists
-    existing = await crud.get_collection_by_id(db, collection_create.id)
-    if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Collection with this ID already exists")
     
     created_collection = await crud.create_collection(db, collection_create)
     return CollectionResponse(
@@ -155,7 +173,7 @@ async def create_collection(
 
 @router.put("/{collection_id}", response_model=CollectionResponse, summary="Обновить коллекцию")
 async def update_collection(
-    collection_id: str,
+    collection_id: int,
     collection_update: CollectionUpdate,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -190,7 +208,7 @@ async def update_collection(
 
 @router.delete("/{collection_id}", summary="Удалить коллекцию", status_code=204)
 async def delete_collection(
-    collection_id: str,
+    collection_id: int,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -206,7 +224,7 @@ async def delete_collection(
 
 @router.post("/{collection_id}/images", summary="Добавить изображение в коллекцию", status_code=201)
 async def add_collection_image(
-    collection_id: str,
+    collection_id: int,
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -221,18 +239,17 @@ async def add_collection_image(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
     
     # Upload image and create derivatives
-    image_id = str(uuid.uuid4())
     file_url = await upload_image_and_derivatives(file, file.filename)
     
     # Save to database
-    await crud.create_collection_image(db, collection_id, id=image_id, file_url=file_url)
+    created = await crud.create_collection_image(db, collection_id, file_url=file_url)
     
-    return {"id": image_id, "file": file_url}
+    return {"id": created.id, "file": file_url}
 
 
 @router.delete("/images/{image_id}", summary="Удалить изображение коллекции", status_code=204)
 async def delete_collection_image(
-    image_id: str,
+    image_id: int,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):

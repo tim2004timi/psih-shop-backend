@@ -4,12 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 
 from src.database import get_db
 from src.config import settings
 from src import crud
 from src.schemas.user import UserLogin, UserResponse, UserCreate
 from src.utils import verify_password
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -35,10 +38,16 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> Opti
     """Аутентифицирует пользователя по email и паролю"""
     user = await crud.get_user_by_email(db, email)
     if not user:
+        logger.warning(f"Authentication failed: user not found for email {email}")
+        return None
+    if not user.is_active:
+        logger.warning(f"Authentication failed: user {email} is inactive")
         return None
     if not user.password_hash:
+        logger.warning(f"Authentication failed: user {email} has no password hash")
         return None
     if not verify_password(password, user.password_hash):
+        logger.warning(f"Authentication failed: incorrect password for user {email}")
         return None
     return user
 
@@ -61,12 +70,18 @@ async def get_current_user(
         )
         email: str = payload.get("sub")
         if email is None:
+            logger.warning("JWT token missing 'sub' field")
             raise credentials_exception
-    except JWTError:
+    except JWTError as e:
+        logger.warning(f"JWT token validation failed: {str(e)}")
         raise credentials_exception
     
     user = await crud.get_user_by_email(db, email)
     if user is None:
+        logger.warning(f"User not found for email from token: {email}")
+        raise credentials_exception
+    if not user.is_active:
+        logger.warning(f"User {email} is inactive, access denied")
         raise credentials_exception
     
     return {

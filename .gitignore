@@ -41,3 +41,7 @@ build/
 # Temporary files
 tmp/
 temp/
+
+# pytest
+pytest.ini
+.pytest_cache/

@@ -13,7 +13,7 @@ class CollectionCategory(str, enum.Enum):
 class Collection(Base):
     __tablename__ = "collections"
 
-    id = Column(String(50), primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(100), nullable=False)
     slug = Column(String(100), unique=True, index=True, nullable=False)
     season = Column(String(20), nullable=False)
@@ -32,8 +32,8 @@ class Collection(Base):
 class CollectionImage(Base):
     __tablename__ = "collection_images"
 
-    id = Column(String(36), primary_key=True, index=True)
-    collection_id = Column(String(50), ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    collection_id = Column(Integer, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     file = Column(String(200), nullable=False)
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now())
@@ -42,6 +42,6 @@ class CollectionImage(Base):
 class CollectionProduct(Base):
     __tablename__ = "collection_products"
 
-    collection_id = Column(String(50), ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True)
-    product_id = Column(String(50), ForeignKey("products.id", ondelete="CASCADE"), primary_key=True, index=True)
+    collection_id = Column(Integer, ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True, index=True)
     sort_order = Column(Integer, default=0)

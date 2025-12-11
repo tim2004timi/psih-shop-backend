@@ -2,18 +2,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict
 from src.models.category import Category, ProductCategory
-from src.models.product import Product
+from src.models.product import Product, ProductColor
 
 
-async def create_category(db: AsyncSession, *, id: str, name: str, slug: str, parent_id: Optional[str], level: int, sort_order: int, is_active: bool) -> Category:
-    cat = Category(id=id, name=name, slug=slug, parent_id=parent_id, level=level, sort_order=sort_order, is_active=is_active)
+async def create_category(db: AsyncSession, *, name: str, slug: str, parent_id: Optional[int], level: int, sort_order: int, is_active: bool) -> Category:
+    cat = Category(name=name, slug=slug, parent_id=parent_id, level=level, sort_order=sort_order, is_active=is_active)
     db.add(cat)
     await db.commit()
     await db.refresh(cat)
     return cat
 
 
-async def delete_category(db: AsyncSession, category_id: str) -> bool:
+async def delete_category(db: AsyncSession, category_id: int) -> bool:
     result = await db.execute(select(Category).where(Category.id == category_id))
     cat = result.scalar_one_or_none()
     if not cat:
@@ -45,19 +45,21 @@ async def get_category_by_slug(db: AsyncSession, slug: str) -> Optional[Category
     return result.scalar_one_or_none()
 
 
-async def get_products_by_category_slug(db: AsyncSession, slug: str) -> List[Product]:
+async def get_products_by_category_slug(db: AsyncSession, slug: str) -> List[ProductColor]:
+    """Получить продукты категории (теперь возвращаем ProductColor)"""
     cat = await get_category_by_slug(db, slug)
     if not cat:
         return []
     result = await db.execute(
-        select(Product)
+        select(ProductColor)
+        .join(Product, ProductColor.product_id == Product.id)
         .join(ProductCategory, ProductCategory.product_id == Product.id)
         .where(ProductCategory.category_id == cat.id)
     )
     return result.scalars().all()
 
 
-async def add_product_to_category(db: AsyncSession, product_id: str, category_id: str) -> bool:
+async def add_product_to_category(db: AsyncSession, product_id: int, category_id: int) -> bool:
     # check duplicates
     exists = await db.execute(
         select(ProductCategory).where(
@@ -73,7 +75,7 @@ async def add_product_to_category(db: AsyncSession, product_id: str, category_id
     return True
 
 
-async def remove_product_from_category(db: AsyncSession, product_id: str, category_id: str) -> bool:
+async def remove_product_from_category(db: AsyncSession, product_id: int, category_id: int) -> bool:
     result = await db.execute(
         select(ProductCategory).where(
             ProductCategory.product_id == product_id,

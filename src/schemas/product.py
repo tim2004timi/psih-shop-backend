@@ -5,8 +5,6 @@ from decimal import Decimal
 from src.models.product import ProductStatus
 
 class ProductBase(BaseModel):
-    slug: str = Field(..., max_length=100, description="Уникальный slug для продукта")
-    title: str = Field(..., max_length=200, description="Название продукта")
     description: Optional[str] = Field(None, description="Описание продукта")
     price: Decimal = Field(..., decimal_places=2, description="Цена продукта")
     discount_price: Optional[Decimal] = Field(None, decimal_places=2, description="Цена со скидкой")
@@ -20,11 +18,9 @@ class ProductBase(BaseModel):
     meta_returns: Optional[str] = Field(None, max_length=100, description="Информация о возврате")
 
 class ProductCreate(ProductBase):
-    id: str = Field(..., max_length=50, description="Уникальный ID продукта")
+    pass  # id будет генерироваться автоматически
 
 class ProductUpdate(BaseModel):
-    slug: Optional[str] = Field(None, max_length=100)
-    title: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = None
     price: Optional[Decimal] = Field(None, decimal_places=2)
     discount_price: Optional[Decimal] = Field(None, decimal_places=2)
@@ -38,21 +34,38 @@ class ProductUpdate(BaseModel):
     meta_returns: Optional[str] = Field(None, max_length=100)
 
 class ProductInDB(ProductBase):
-    id: str
+    id: int
     created_at: datetime
-    updated_at: datetime
 
     class Config:
         from_attributes = True
 
-class ProductColorOut(BaseModel):
-    code: str
-    label: str
-    hex: str
+class ProductColorBase(BaseModel):
+    slug: str = Field(..., max_length=100, description="Уникальный slug для продукта с цветом")
+    title: str = Field(..., max_length=200, description="Название продукта")
+    label: str = Field(..., max_length=100, description="Название цвета")
+    hex: str = Field(..., max_length=7, description="HEX код цвета")
+
+class ProductColorCreate(ProductColorBase):
+    product_id: int
+
+class ProductColorUpdate(BaseModel):
+    slug: Optional[str] = Field(None, max_length=100)
+    title: Optional[str] = Field(None, max_length=200)
+    label: Optional[str] = Field(None, max_length=100)
+    hex: Optional[str] = Field(None, max_length=7)
+
+class ProductColorOut(ProductColorBase):
+    id: int
+    product_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class ProductColorIn(BaseModel):
-    id: str
-    code: str
+    slug: str
+    title: str
     label: str
     hex: str
 
@@ -69,15 +82,16 @@ class ProductMeta(BaseModel):
     returns: Optional[str] = None
 
 class ProductPublic(BaseModel):
-    id: str
+    id: int
     slug: str
     title: str
     categoryPath: List[str] = Field(default_factory=list)
     price: Decimal
     discount_price: Optional[Decimal] = None
     currency: str
-    colors: List[ProductColorOut] = Field(default_factory=list)
-    sizes: List[str] = Field(default_factory=list)
+    label: str  # название цвета
+    hex: str  # HEX код цвета
+    sizes: List[dict] = Field(default_factory=list)  # список размеров с количеством
     composition: Optional[str] = None
     fit: Optional[str] = None
     description: Optional[str] = None
@@ -85,9 +99,28 @@ class ProductPublic(BaseModel):
     meta: ProductMeta
     status: ProductStatus
 
+class ProductSizeBase(BaseModel):
+    size: str = Field(..., max_length=10, description="Размер")
+    quantity: int = Field(..., ge=0, description="Количество")
+
+class ProductSizeCreate(ProductSizeBase):
+    product_color_id: int
+
+class ProductSizeUpdate(BaseModel):
+    size: Optional[str] = Field(None, max_length=10)
+    quantity: Optional[int] = Field(None, ge=0)
+
+class ProductSizeOut(ProductSizeBase):
+    id: int
+    product_color_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class ProductSizeIn(BaseModel):
-    id: str
     size: str
+    quantity: int = 0
 
 class ProductList(BaseModel):
     products: list[ProductPublic]

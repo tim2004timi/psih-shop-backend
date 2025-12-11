@@ -19,7 +19,7 @@ class CollectionBase(BaseModel):
 
 
 class CollectionCreate(CollectionBase):
-    id: str = Field(..., max_length=50)
+    pass  # id будет генерироваться автоматически
 
 
 class CollectionUpdate(BaseModel):
@@ -38,13 +38,13 @@ class CollectionUpdate(BaseModel):
 
 
 class CollectionImageOut(BaseModel):
-    id: str
+    id: int
     file: str
     sort_order: int
 
 
 class CollectionResponse(CollectionBase):
-    id: str
+    id: int
     created_at: str
     images: List[CollectionImageOut] = Field(default_factory=list)
 
@@ -57,10 +57,9 @@ class CollectionListResponse(BaseModel):
 
 
 class CollectionImageIn(BaseModel):
-    id: str
     sort_order: int = 0
 
 
 class CollectionProductIn(BaseModel):
-    product_id: str
+    product_id: int
     sort_order: int = 0

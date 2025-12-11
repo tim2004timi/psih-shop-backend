@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 from typing import List
 import asyncio
+import logging
+import sys
 
 from src.database import create_tables, check_db_connection
 from src.auth import router as auth_router
@@ -12,6 +14,16 @@ from src.routers.user import router as user_router
 from src.routers.product import router as product_router
 from src.routers.category import router as category_router
 from src.routers.collection import router as collection_router
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(
@@ -35,13 +47,21 @@ app.add_middleware(
 async def startup_event():
     await asyncio.sleep(2)
 
+    logger.info("Starting application...")
+    
     # Создаем таблицы при старте приложения
-    await create_tables()
+    try:
+        await create_tables()
+        logger.info("Database tables created/verified")
+    except Exception as e:
+        logger.error(f"Failed to create database tables: {str(e)}", exc_info=True)
+        raise
+    
     # Проверяем подключение к БД
     if await check_db_connection():
-        print("✅ Database connection successful")
+        logger.info("✅ Database connection successful")
     else:
-        print("❌ Database connection failed")
+        logger.error("❌ Database connection failed")
 
 # Подключаем роутеры
 main_router = APIRouter(prefix="/api")

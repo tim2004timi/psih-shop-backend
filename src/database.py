@@ -3,6 +3,9 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import NullPool
 from src.config import settings
 from sqlalchemy import text
+import logging
+
+logger = logging.getLogger(__name__)
 
 from src.models.base import Base
 # Импортируем все модели для создания таблиц
@@ -42,8 +45,9 @@ async def get_db() -> AsyncSession:
         try:
             yield session
             await session.commit()
-        except Exception:
+        except Exception as e:
             await session.rollback()
+            logger.error(f"Database transaction error: {str(e)}", exc_info=True)
             raise
         finally:
             await session.close()
@@ -74,8 +78,9 @@ async def check_db_connection():
     """
     try:
         async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))  # ← Оберните в text()
+            await conn.execute(text("SELECT 1"))
+        logger.info("Database connection successful")
         return True
     except Exception as e:
-        print(f"Database connection error: {e}")
+        logger.error(f"Database connection error: {str(e)}", exc_info=True)
         return False

@@ -20,7 +20,7 @@ async def get_collections_count(db: AsyncSession) -> int:
     return result.scalar()
 
 
-async def get_collection_by_id(db: AsyncSession, collection_id: str) -> Optional[Collection]:
+async def get_collection_by_id(db: AsyncSession, collection_id: int) -> Optional[Collection]:
     """Получить коллекцию по ID"""
     result = await db.execute(select(Collection).where(Collection.id == collection_id))
     return result.scalar_one_or_none()
@@ -35,7 +35,6 @@ async def get_collection_by_slug(db: AsyncSession, slug: str) -> Optional[Collec
 async def create_collection(db: AsyncSession, collection_create: CollectionCreate) -> Collection:
     """Создать новую коллекцию"""
     db_collection = Collection(
-        id=collection_create.id,
         name=collection_create.name,
         slug=collection_create.slug,
         season=collection_create.season,
@@ -55,7 +54,7 @@ async def create_collection(db: AsyncSession, collection_create: CollectionCreat
     return db_collection
 
 
-async def update_collection(db: AsyncSession, collection_id: str, update_data: CollectionUpdate) -> Optional[Collection]:
+async def update_collection(db: AsyncSession, collection_id: int, update_data: CollectionUpdate) -> Optional[Collection]:
     """Обновить коллекцию"""
     collection = await get_collection_by_id(db, collection_id)
     if not collection:
@@ -70,7 +69,7 @@ async def update_collection(db: AsyncSession, collection_id: str, update_data: C
     return collection
 
 
-async def delete_collection(db: AsyncSession, collection_id: str) -> bool:
+async def delete_collection(db: AsyncSession, collection_id: int) -> bool:
     """Удалить коллекцию"""
     collection = await get_collection_by_id(db, collection_id)
     if not collection:
@@ -81,7 +80,7 @@ async def delete_collection(db: AsyncSession, collection_id: str) -> bool:
     return True
 
 
-async def get_collection_images(db: AsyncSession, collection_id: str) -> List[CollectionImage]:
+async def get_collection_images(db: AsyncSession, collection_id: int) -> List[CollectionImage]:
     """Получить изображения коллекции"""
     result = await db.execute(
         select(CollectionImage)
@@ -91,16 +90,16 @@ async def get_collection_images(db: AsyncSession, collection_id: str) -> List[Co
     return result.scalars().all()
 
 
-async def create_collection_image(db: AsyncSession, collection_id: str, *, id: str, file_url: str, sort_order: int = 0) -> CollectionImage:
+async def create_collection_image(db: AsyncSession, collection_id: int, *, file_url: str, sort_order: int = 0) -> CollectionImage:
     """Создать изображение коллекции"""
-    img = CollectionImage(id=id, collection_id=collection_id, file=file_url, sort_order=sort_order)
+    img = CollectionImage(collection_id=collection_id, file=file_url, sort_order=sort_order)
     db.add(img)
     await db.commit()
     await db.refresh(img)
     return img
 
 
-async def delete_collection_image(db: AsyncSession, image_id: str) -> bool:
+async def delete_collection_image(db: AsyncSession, image_id: int) -> bool:
     """Удалить изображение коллекции"""
     result = await db.execute(select(CollectionImage).where(CollectionImage.id == image_id))
     img = result.scalar_one_or_none()
@@ -111,7 +110,7 @@ async def delete_collection_image(db: AsyncSession, image_id: str) -> bool:
     return True
 
 
-async def get_products_by_collection(db: AsyncSession, collection_id: str) -> List[Product]:
+async def get_products_by_collection(db: AsyncSession, collection_id: int) -> List[Product]:
     """Получить продукты коллекции"""
     result = await db.execute(
         select(Product)
@@ -122,7 +121,7 @@ async def get_products_by_collection(db: AsyncSession, collection_id: str) -> Li
     return result.scalars().all()
 
 
-async def add_product_to_collection(db: AsyncSession, collection_id: str, product_id: str, sort_order: int = 0) -> bool:
+async def add_product_to_collection(db: AsyncSession, collection_id: int, product_id: int, sort_order: int = 0) -> bool:
     """Добавить продукт в коллекцию"""
     # check duplicates
     exists = await db.execute(
@@ -140,7 +139,7 @@ async def add_product_to_collection(db: AsyncSession, collection_id: str, produc
     return True
 
 
-async def remove_product_from_collection(db: AsyncSession, collection_id: str, product_id: str) -> bool:
+async def remove_product_from_collection(db: AsyncSession, collection_id: int, product_id: int) -> bool:
     """Удалить продукт из коллекции"""
     result = await db.execute(
         select(CollectionProduct).where(

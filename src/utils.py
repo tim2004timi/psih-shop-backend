@@ -7,6 +7,9 @@ import os
 from src.config import settings
 import mimetypes
 import bcrypt
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Настройка для хеширования паролей
 # Используем bcrypt напрямую для избежания проблем с автоматическим определением backend в passlib
@@ -99,33 +102,39 @@ def resize_image(content: bytes, max_width: int) -> bytes:
 
 async def upload_image_and_derivatives(file, filename: str) -> str:
     """Upload file and derivatives, return main file URL"""
-    client = get_minio_client()
-    base, medium, small = generate_object_name(filename)
-    bucket = settings.MINIO_BUCKET_NAME
+    try:
+        client = get_minio_client()
+        base, medium, small = generate_object_name(filename)
+        bucket = settings.MINIO_BUCKET_NAME
 
-    # ensure bucket exists
-    if not client.bucket_exists(bucket):
-        client.make_bucket(bucket)
+        # ensure bucket exists
+        if not client.bucket_exists(bucket):
+            client.make_bucket(bucket)
+            logger.info(f"Created MinIO bucket: {bucket}")
 
-    # read file content
-    file_bytes = await file.read()
-    await file.seek(0)  # reset file pointer
+        # read file content
+        file_bytes = await file.read()
+        await file.seek(0)  # reset file pointer
 
-    # detect content-types
-    base_ct, _ = mimetypes.guess_type(base)
-    medium_ct, _ = mimetypes.guess_type(medium)
-    small_ct, _ = mimetypes.guess_type(small)
-    base_ct = base_ct or "image/jpeg"
-    medium_ct = medium_ct or base_ct
-    small_ct = small_ct or base_ct
+        # detect content-types
+        base_ct, _ = mimetypes.guess_type(base)
+        medium_ct, _ = mimetypes.guess_type(medium)
+        small_ct, _ = mimetypes.guess_type(small)
+        base_ct = base_ct or "image/jpeg"
+        medium_ct = medium_ct or base_ct
+        small_ct = small_ct or base_ct
 
-    # upload original
-    client.put_object(bucket, base, data=BytesIO(file_bytes), length=len(file_bytes), content_type=base_ct)
+        # upload original
+        client.put_object(bucket, base, data=BytesIO(file_bytes), length=len(file_bytes), content_type=base_ct)
 
-    # medium and small
-    medium_bytes = resize_image(file_bytes, 1200)
-    small_bytes = resize_image(file_bytes, 800)
-    client.put_object(bucket, medium, data=BytesIO(medium_bytes), length=len(medium_bytes), content_type=medium_ct)
-    client.put_object(bucket, small, data=BytesIO(small_bytes), length=len(small_bytes), content_type=small_ct)
+        # medium and small
+        medium_bytes = resize_image(file_bytes, 1200)
+        small_bytes = resize_image(file_bytes, 800)
+        client.put_object(bucket, medium, data=BytesIO(medium_bytes), length=len(medium_bytes), content_type=medium_ct)
+        client.put_object(bucket, small, data=BytesIO(small_bytes), length=len(small_bytes), content_type=small_ct)
 
-    return build_public_url(base)
+        logger.info(f"Successfully uploaded image: {base}")
+        return build_public_url(base)
+    except Exception as e:
+        logger.error(f"Failed to upload image {filename}: {str(e)}", exc_info=True)
+        raise

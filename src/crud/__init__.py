@@ -2,9 +2,9 @@ from .user import get_user_by_email, create_user, get_user_by_id, get_users
 from .product import (
     get_product_by_id, get_product_by_slug, get_products, get_products_count,
     create_product, update_product, delete_product, check_slug_exists,
-    get_colors_for_products, get_sizes_for_products,
-    create_product_color, delete_product_color, list_product_colors,
-    create_product_size, delete_product_size, list_product_sizes,
+    get_product_color_by_id, create_product_color, update_product_color, delete_product_color, list_product_colors,
+    get_sizes_for_products, get_images_for_products,
+    create_product_size, update_product_size, delete_product_size, list_product_sizes,
     list_product_images, create_product_image, delete_product_image
 )
 from .category import (
