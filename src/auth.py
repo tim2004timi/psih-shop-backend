@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -18,14 +18,16 @@ router = APIRouter()
 
 # OAuth2 схема для получения токена
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
+# OAuth2 схема для опциональной аутентификации (без ошибки при отсутствии токена)
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Создает JWT токен"""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(
         to_encode, 
@@ -50,6 +52,60 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> Opti
         logger.warning(f"Authentication failed: incorrect password for user {email}")
         return None
     return user
+
+async def get_optional_current_user(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[dict]:
+    """Получает текущего пользователя из JWT токена, если токен предоставлен. Возвращает None если токен отсутствует."""
+    if not token:
+        return None
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        payload = jwt.decode(
+            token, 
+            settings.SECRET_KEY, 
+            algorithms=[settings.ALGORITHM]
+        )
+        email: str = payload.get("sub")
+        if email is None:
+            logger.warning("JWT token missing 'sub' field")
+            return None
+    except JWTError as e:
+        logger.warning(f"JWT token validation failed: {str(e)}")
+        return None
+    
+    user = await crud.get_user_by_email(db, email)
+    if user is None:
+        logger.warning(f"User not found for email from token: {email}")
+        return None
+    if not user.is_active:
+        logger.warning(f"User {email} is inactive, access denied")
+        return None
+    
+    return {
+        "id": user.id,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "phone": user.phone,
+        "avatar": user.avatar,
+        "address": user.address,
+        "city": user.city,
+        "postal_code": user.postal_code,
+        "country": user.country,
+        "is_admin": user.is_admin,
+        "is_active": user.is_active,
+        "email_verified": user.email_verified,
+        "created_at": user.created_at,
+        "updated_at": user.updated_at
+    }
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),

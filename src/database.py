@@ -13,6 +13,7 @@ from src.models.user import User
 from src.models.product import Product
 from src.models.category import Category, ProductCategory
 from src.models.collection import Collection, CollectionImage, CollectionProduct
+from src.models.orders import Order, OrderProduct
 
 # Асинхронный URL для подключения к PostgreSQL
 SQLALCHEMY_DATABASE_URL = settings.get_async_database_url()

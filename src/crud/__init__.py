@@ -18,3 +18,6 @@ from .collection import (
     get_collection_images, create_collection_image, delete_collection_image,
     get_products_by_collection, add_product_to_collection, remove_product_from_collection
 )
+from .orders import (
+    create_order, get_orders, get_order_by_id, get_order_detail, get_orders_detail, update_order
+)

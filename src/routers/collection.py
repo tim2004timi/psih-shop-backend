@@ -121,7 +121,8 @@ async def get_collection_products(
             continue
         
         public_products.append(ProductPublic(
-            id=pc.id,
+            id=product.id,
+            color_id=pc.id,
             slug=pc.slug,
             title=pc.title,
             categoryPath=[],

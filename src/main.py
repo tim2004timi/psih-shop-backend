@@ -14,6 +14,7 @@ from src.routers.user import router as user_router
 from src.routers.product import router as product_router
 from src.routers.category import router as category_router
 from src.routers.collection import router as collection_router
+from src.routers.orders import router as orders_router
 
 # Настройка логирования
 logging.basicConfig(
@@ -48,7 +49,7 @@ async def startup_event():
     await asyncio.sleep(2)
 
     logger.info("Starting application...")
-    
+
     # Создаем таблицы при старте приложения
     try:
         await create_tables()
@@ -70,6 +71,7 @@ main_router.include_router(user_router, tags=["Users"])
 main_router.include_router(product_router, tags=["Products"])
 main_router.include_router(category_router, tags=["Categories"])
 main_router.include_router(collection_router, tags=["Collections"])
+main_router.include_router(orders_router, tags=["Orders"])
 
 app.include_router(main_router)
 

@@ -6,8 +6,8 @@ from src.models.product import ProductStatus
 
 class ProductBase(BaseModel):
     description: Optional[str] = Field(None, description="Описание продукта")
-    price: Decimal = Field(..., decimal_places=2, description="Цена продукта")
-    discount_price: Optional[Decimal] = Field(None, decimal_places=2, description="Цена со скидкой")
+    price: Decimal = Field(..., decimal_places=2, gt=0, description="Цена продукта (должна быть больше 0)")
+    discount_price: Optional[Decimal] = Field(None, decimal_places=2, gt=0, description="Цена со скидкой (должна быть больше 0)")
     currency: str = Field(default="EUR", max_length=3, description="Валюта")
     composition: Optional[str] = Field(None, max_length=200, description="Состав продукта")
     fit: Optional[str] = Field(None, max_length=50, description="Посадка/размер")
@@ -22,8 +22,8 @@ class ProductCreate(ProductBase):
 
 class ProductUpdate(BaseModel):
     description: Optional[str] = None
-    price: Optional[Decimal] = Field(None, decimal_places=2)
-    discount_price: Optional[Decimal] = Field(None, decimal_places=2)
+    price: Optional[Decimal] = Field(None, decimal_places=2, gt=0)
+    discount_price: Optional[Decimal] = Field(None, decimal_places=2, gt=0)
     currency: Optional[str] = Field(None, max_length=3)
     composition: Optional[str] = Field(None, max_length=200)
     fit: Optional[str] = Field(None, max_length=50)
@@ -82,7 +82,8 @@ class ProductMeta(BaseModel):
     returns: Optional[str] = None
 
 class ProductPublic(BaseModel):
-    id: int
+    id: int  # ID базового продукта
+    color_id: int  # ID цвета продукта
     slug: str
     title: str
     categoryPath: List[str] = Field(default_factory=list)
@@ -120,7 +121,7 @@ class ProductSizeOut(ProductSizeBase):
 
 class ProductSizeIn(BaseModel):
     size: str
-    quantity: int = 0
+    quantity: int = Field(default=0, ge=0, description="Количество (должно быть >= 0)")
 
 class ProductList(BaseModel):
     products: list[ProductPublic]

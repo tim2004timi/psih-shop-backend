@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Numeric, Boolean, DateTime, func, Enum, ForeignKey, Integer
+from sqlalchemy import Column, String, Text, Numeric, Boolean, DateTime, func, Enum, ForeignKey, Integer, CheckConstraint
 from sqlalchemy.orm import declarative_base, relationship
 from src.models.base import Base
 import enum
@@ -25,6 +25,11 @@ class Product(Base):
     meta_returns = Column(String(100), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
+    __table_args__ = (
+        CheckConstraint('price > 0', name='check_price_positive'),
+        CheckConstraint('discount_price IS NULL OR discount_price > 0', name='check_discount_price_positive'),
+    )
+
     def __repr__(self):
         return f"<Product(id={self.id}, price={self.price})>"
 
@@ -49,6 +54,10 @@ class ProductSize(Base):
     size = Column(String(10), nullable=False)
     quantity = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint('quantity >= 0', name='check_product_size_quantity_non_negative'),
+    )
 
 
 class ProductImage(Base):

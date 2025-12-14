@@ -22,6 +22,7 @@
   "products": [
     {
       "id": 1,
+      "color_id": 5,
       "slug": "basic-tshirt-red",
       "title": "Basic T-Shirt",
       "categoryPath": [],
@@ -32,10 +33,12 @@
       "hex": "#FF0000",
       "sizes": [
         {
+          "id": 1,
           "size": "S",
           "quantity": 10
         },
         {
+          "id": 2,
           "size": "M",
           "quantity": 15
         }
@@ -108,10 +111,12 @@
       ],
       "sizes": [
         {
+          "id": 1,
           "size": "S",
           "quantity": 10
         },
         {
+          "id": 2,
           "size": "M",
           "quantity": 15
         }
@@ -160,6 +165,7 @@
 ```json
 {
   "id": 1,
+  "color_id": 5,
   "slug": "basic-tshirt-red",
   "title": "Basic T-Shirt",
   "categoryPath": [],
@@ -170,6 +176,7 @@
   "hex": "#FF0000",
   "sizes": [
     {
+      "id": 1,
       "size": "S",
       "quantity": 10
     }

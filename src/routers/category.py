@@ -47,7 +47,8 @@ async def products_by_category(slug: str, db: AsyncSession = Depends(get_db)):
         
         result.append(
             ProductPublic(
-                id=pc.id,
+                id=product.id,
+                color_id=pc.id,
                 slug=pc.slug,
                 title=pc.title,
                 categoryPath=[],

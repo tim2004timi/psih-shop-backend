@@ -255,6 +255,7 @@ async def get_sizes_for_products(db: AsyncSession, product_color_ids: List[int])
     grouped: dict[int, list[dict]] = defaultdict(list)
     for size in result.scalars().all():
         grouped[size.product_color_id].append({
+            "id": size.id,
             "size": size.size,
             "quantity": size.quantity
         })

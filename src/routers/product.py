@@ -52,7 +52,8 @@ async def get_products(
             continue
             
         public_products.append(ProductPublic(
-            id=pc.id,
+            id=product.id,
+            color_id=pc.id,
             slug=pc.slug,
             title=pc.title,
             categoryPath=[],
@@ -104,7 +105,8 @@ async def get_product_by_slug(
     images = await crud.list_product_images(db, product_color.id)
     
     return ProductPublic(
-        id=product_color.id,
+        id=product.id,
+        color_id=product_color.id,
         slug=product_color.slug,
         title=product_color.title,
         categoryPath=[],
