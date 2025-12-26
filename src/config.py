@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     # MinIO settings
     MINIO_ENDPOINT: str = "psih-minio:9000"
     MINIO_PORT: str = "9000"
-    MINIO_ACCESS_KEY: str
-    MINIO_SECRET_KEY: str
+    MINIO_ROOT_USER: str
+    MINIO_ROOT_PASSWORD: str
     MINIO_SECURE: bool = False
     MINIO_BUCKET_NAME: str = "photos"
     
