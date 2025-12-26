@@ -15,6 +15,7 @@ from src.routers.product import router as product_router
 from src.routers.category import router as category_router
 from src.routers.collection import router as collection_router
 from src.routers.orders import router as orders_router
+from src.routers.cdek import router as cdek_router
 
 # Настройка логирования
 logging.basicConfig(
@@ -72,6 +73,7 @@ main_router.include_router(product_router, tags=["Products"])
 main_router.include_router(category_router, tags=["Categories"])
 main_router.include_router(collection_router, tags=["Collections"])
 main_router.include_router(orders_router, tags=["Orders"])
+main_router.include_router(cdek_router, tags=["CDEK"])
 
 app.include_router(main_router)
 

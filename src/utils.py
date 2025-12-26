@@ -65,8 +65,8 @@ def get_password_hash(password: str) -> str:
 def get_minio_client() -> Minio:
     return Minio(
         endpoint=settings.MINIO_ENDPOINT,
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
+        access_key=settings.MINIO_ROOT_USER,
+        secret_key=settings.MINIO_ROOT_PASSWORD,
         secure=settings.MINIO_SECURE,
     )
 

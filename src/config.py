@@ -40,10 +40,16 @@ class Settings(BaseSettings):
         "http://localhost:8000",
     ]
     
+    # CDEK API settings
+    CDEK_ACCOUNT: Optional[str] = None
+    CDEK_SECURE_PASSWORD: Optional[str] = None
+    CDEK_API_URL: str = "https://api.cdek.ru/v2"
+    CDEK_TEST_MODE: bool = True
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
-        extra = 'allow'  # ← Добавьте эту строку
+        extra = 'allow' 
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
