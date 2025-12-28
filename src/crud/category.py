@@ -18,7 +18,7 @@ async def delete_category(db: AsyncSession, category_id: int) -> bool:
     cat = result.scalar_one_or_none()
     if not cat:
         return False
-    await db.delete(cat)
+    db.delete(cat)
     await db.commit()
     return True
 
@@ -85,7 +85,7 @@ async def remove_product_from_category(db: AsyncSession, product_id: int, catego
     link = result.scalar_one_or_none()
     if not link:
         return False
-    await db.delete(link)
+    db.delete(link)
     await db.commit()
     return True
 

@@ -103,6 +103,7 @@ async def get_product_by_slug(
     
     sizes_map = await crud.get_sizes_for_products(db, [product_color.id])
     images = await crud.list_product_images(db, product_color.id)
+    main_category = await crud.get_product_main_category(db, product.id)
     
     return ProductPublic(
         id=product.id,
@@ -110,6 +111,7 @@ async def get_product_by_slug(
         slug=product_color.slug,
         title=product_color.title,
         categoryPath=[],
+        main_category=main_category,
         price=product.price,
         discount_price=product.discount_price,
         currency=product.currency,
@@ -446,6 +448,8 @@ async def get_product_by_id(
     
     # Получаем все цвета продукта
     colors = await crud.list_product_colors(db, product_id)
+    main_category = await crud.get_product_main_category(db, product_id)
+
     if not colors:
         # Если нет цветов, возвращаем продукт с пустым списком цветов
         return ProductDetail(
@@ -458,6 +462,7 @@ async def get_product_by_id(
             fit=product.fit,
             status=product.status,
             is_pre_order=product.is_pre_order,
+            main_category=main_category,
             meta_care=product.meta_care,
             meta_shipping=product.meta_shipping,
             meta_returns=product.meta_returns,
@@ -497,6 +502,7 @@ async def get_product_by_id(
         fit=product.fit,
         status=product.status,
         is_pre_order=product.is_pre_order,
+        main_category=main_category,
         meta_care=product.meta_care,
         meta_shipping=product.meta_shipping,
         meta_returns=product.meta_returns,

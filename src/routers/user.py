@@ -160,7 +160,7 @@ async def delete_user(
             detail="User not found"
         )
     
-    await db.delete(user)
+    db.delete(user)
     await db.commit()
     return {"message": "User deleted successfully"}
 

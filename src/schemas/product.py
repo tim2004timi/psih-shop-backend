@@ -81,12 +81,17 @@ class ProductMeta(BaseModel):
     shipping: Optional[str] = None
     returns: Optional[str] = None
 
+class MainCategory(BaseModel):
+    name: str
+    slug: str
+
 class ProductPublic(BaseModel):
     id: int  # ID базового продукта
     color_id: int  # ID цвета продукта
     slug: str
     title: str
     categoryPath: List[str] = Field(default_factory=list)
+    main_category: Optional[MainCategory] = None
     price: Decimal
     discount_price: Optional[Decimal] = None
     currency: str
@@ -150,6 +155,7 @@ class ProductDetail(BaseModel):
     fit: Optional[str] = None
     status: ProductStatus
     is_pre_order: bool
+    main_category: Optional[MainCategory] = None
     meta_care: Optional[str] = None
     meta_shipping: Optional[str] = None
     meta_returns: Optional[str] = None
