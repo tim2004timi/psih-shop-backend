@@ -136,6 +136,7 @@ class ProductList(BaseModel):
 
 class ProductColorDetail(BaseModel):
     """Детальная информация о цвете продукта"""
+    id: int  # Добавлено для фронтенда
     color_id: int
     slug: str
     title: str

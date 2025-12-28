@@ -12,7 +12,7 @@ from src.schemas.product import (
     ProductColorIn, ProductSizeIn, ProductColorUpdate, ProductDetail, ProductColorDetail
 )
 from src.models.product import ProductStatus, Product, ProductColor
-from src.utils import upload_image_and_derivatives
+from src.utils import upload_image_and_derivatives, slugify
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -242,18 +242,35 @@ async def update_color(
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     
-    # Проверяем slug, если он обновляется
+    # Если название изменилось, а slug не передан - генерируем slug автоматически
+    # (по просьбе пользователя, чтобы slug менялся при изменении названия)
+    if color_update.title and not color_update.slug:
+        color_update.slug = slugify(color_update.title)
+    
+    # Проверяем slug, если он обновляется (передан явно или сгенерирован)
     if color_update.slug:
         if await crud.check_slug_exists(db, color_update.slug, exclude_id=color_id):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Product with this slug already exists"
-            )
+            # Если сгенерированный slug занят, попробуем добавить ID для уникальности
+            color_update.slug = f"{color_update.slug}-{color_id}"
+            # Проверяем еще раз на всякий случай
+            if await crud.check_slug_exists(db, color_update.slug, exclude_id=color_id):
+                 raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Product with this slug already exists even with suffix"
+                )
     
     updated = await crud.update_product_color(db, color_id, color_update)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Color not found")
-    return {"id": updated.id, "slug": updated.slug, "title": updated.title, "label": updated.label, "hex": updated.hex}
+        
+    return {
+        "id": updated.product_id, # Возвращаем ID базового продукта как "id" для консистентности с ProductPublic
+        "color_id": updated.id, 
+        "slug": updated.slug, 
+        "title": updated.title, 
+        "label": updated.label, 
+        "hex": updated.hex
+    }
 
 @router.delete("/colors/{color_id}", summary="Удалить цвет", status_code=204)
 async def delete_color(
@@ -485,6 +502,7 @@ async def get_product_by_id(
         sizes = sizes_map.get(color.id, [])
         
         colors_detail.append(ProductColorDetail(
+            id=color.id,
             color_id=color.id,
             slug=color.slug,
             title=color.title,

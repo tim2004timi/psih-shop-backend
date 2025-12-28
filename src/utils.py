@@ -9,7 +9,30 @@ import mimetypes
 import bcrypt
 import logging
 
+import logging
+import re
+
 logger = logging.getLogger(__name__)
+
+def slugify(text: str) -> str:
+    """Генерирует slug из текста, поддерживает кириллицу"""
+    cyrillic_map = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+        'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+        'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
+        'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu',
+        'я': 'ya'
+    }
+    
+    text = text.lower()
+    for char, replacement in cyrillic_map.items():
+        text = text.replace(char, replacement)
+    
+    # Оставляем только буквы, цифры и дефисы
+    text = re.sub(r'[^a-z0-9]+', '-', text)
+    # Удаляем лишние дефисы
+    text = re.sub(r'-+', '-', text).strip('-')
+    return text
 
 # Настройка для хеширования паролей
 # Используем bcrypt напрямую для избежания проблем с автоматическим определением backend в passlib
