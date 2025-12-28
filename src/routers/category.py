@@ -38,6 +38,7 @@ async def products_by_category(slug: str, db: AsyncSession = Depends(get_db)):
     color_ids = [pc.id for pc in product_colors]
     sizes_map = await crud.get_sizes_for_products(db, color_ids)
     images_map = await crud.get_images_for_products(db, color_ids)
+    main_categories_map = await crud.get_main_categories_for_products(db, product_ids)
     
     result: List[ProductPublic] = []
     for pc in product_colors:
@@ -52,6 +53,7 @@ async def products_by_category(slug: str, db: AsyncSession = Depends(get_db)):
                 slug=pc.slug,
                 title=pc.title,
                 categoryPath=[],
+                main_category=main_categories_map.get(product.id),
                 price=product.price,
                 discount_price=product.discount_price,
                 currency=product.currency,

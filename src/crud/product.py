@@ -296,6 +296,21 @@ async def get_product_main_category(db: AsyncSession, product_id: int) -> Option
             
     return None
 
+async def get_main_categories_for_products(db: AsyncSession, product_ids: List[int]) -> dict[int, dict]:
+    """Загрузить основные категории для списка продуктов (батч-версия)"""
+    if not product_ids:
+        return {}
+        
+    # Это упрощенная версия, которая делает запросы для каждого товара,
+    # но в будущем её можно оптимизировать одним сложным CTE запросом.
+    # Для текущего объема данных этого достаточно.
+    results = {}
+    for pid in product_ids:
+        main_cat = await get_product_main_category(db, pid)
+        if main_cat:
+            results[pid] = main_cat
+    return results
+
 async def get_sizes_for_products(db: AsyncSession, product_color_ids: List[int]) -> dict[int, list[dict]]:
     """Загрузить размеры для набора продуктов и сгруппировать по product_color_id"""
     if not product_color_ids:

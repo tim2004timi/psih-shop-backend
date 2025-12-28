@@ -5,7 +5,8 @@ from .product import (
     get_product_color_by_id, create_product_color, update_product_color, delete_product_color, list_product_colors,
     get_sizes_for_products, get_images_for_products,
     create_product_size, update_product_size, delete_product_size, list_product_sizes,
-    list_product_images, create_product_image, delete_product_image, delete_primary_image
+    list_product_images, create_product_image, delete_product_image, delete_primary_image,
+    get_product_main_category, get_main_categories_for_products
 )
 from .category import (
     create_category, delete_category, get_all_categories, build_tree,
