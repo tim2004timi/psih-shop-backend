@@ -286,6 +286,26 @@ async def upload_image(
     created = await crud.create_product_image(db, product_color_id, file_url=file_url, sort_order=sort_order)
     return {"id": created.id, "file": created.file, "sort_order": created.sort_order}
 
+@router.post("/colors/{product_color_id}/primary-image", summary="Загрузить главное изображение", status_code=201)
+async def upload_primary_image(
+    product_color_id: int,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    color = await crud.get_product_color_by_id(db, product_color_id)
+    if not color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product color not found")
+    
+    await crud.delete_primary_image(db, product_color_id)
+    
+    file_url = await upload_image_and_derivatives(file, file.filename)
+    created = await crud.create_product_image(db, product_color_id, file_url=file_url, sort_order=1000)
+    return {"id": created.id, "file": created.file, "sort_order": created.sort_order}
+
 @router.delete("/images/{image_id}", summary="Удалить изображение", status_code=204)
 async def delete_image(
     image_id: int,

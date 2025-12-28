@@ -178,8 +178,20 @@ async def create_product_image(db: AsyncSession, product_color_id: int, *, file_
     return img
 
 async def delete_product_image(db: AsyncSession, image_id: int) -> bool:
-    """Удалить изображение продукта"""
     result = await db.execute(select(ProductImage).where(ProductImage.id == image_id))
+    img = result.scalar_one_or_none()
+    if not img:
+        return False
+    await db.delete(img)
+    await db.commit()
+    return True
+
+async def delete_primary_image(db: AsyncSession, product_color_id: int) -> bool:
+    result = await db.execute(
+        select(ProductImage)
+        .where(ProductImage.product_color_id == product_color_id)
+        .where(ProductImage.sort_order == 1000)
+    )
     img = result.scalar_one_or_none()
     if not img:
         return False
