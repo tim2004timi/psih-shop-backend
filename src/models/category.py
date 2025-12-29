@@ -20,5 +20,6 @@ class ProductCategory(Base):
 
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True, index=True)
+    sort_order = Column(Integer, default=0)
 
 

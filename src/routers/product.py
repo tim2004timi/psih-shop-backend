@@ -453,6 +453,14 @@ async def set_product_categories(
     await crud.set_product_categories(db, product_id, category_ids)
     return
 
+@router.get("/base/{product_id}/categories", summary="Получить категории продукта")
+async def get_product_categories(
+    product_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    categories = await crud.get_categories_by_product(db, product_id)
+    return [{"id": c.id, "name": c.name, "slug": c.slug} for c in categories]
+
 # --- Collection management ---
 class ProductCollectionIn(BaseModel):
     collection_id: int

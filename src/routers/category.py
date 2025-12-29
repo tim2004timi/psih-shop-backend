@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
@@ -86,6 +86,19 @@ async def delete_category(category_id: int, current_user: dict = Depends(get_cur
     ok = await crud.delete_category(db, category_id)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    return
+
+@router.put("/{category_id}/products/reorder", status_code=204, summary="Изменить порядок товаров в категории")
+async def reorder_category_products(
+    category_id: int,
+    product_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    await crud.reorder_category_products(db, category_id, product_ids)
     return
 
 
