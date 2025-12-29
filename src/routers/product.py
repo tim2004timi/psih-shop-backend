@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from fastapi import UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
@@ -330,7 +330,7 @@ async def upload_primary_image(
 @router.put("/colors/{product_color_id}/images/reorder", summary="Изменить порядок изображений", status_code=204)
 async def reorder_images(
     product_color_id: int,
-    image_ids: List[int],
+    image_ids: List[int] = Body(...),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):

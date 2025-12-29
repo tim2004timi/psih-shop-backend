@@ -6,6 +6,7 @@ from .product import (
     get_sizes_for_products, get_images_for_products,
     create_product_size, update_product_size, delete_product_size, list_product_sizes,
     list_product_images, create_product_image, delete_product_image, delete_primary_image,
+    reorder_product_images,
     get_product_main_category, get_main_categories_for_products
 )
 from .category import (
