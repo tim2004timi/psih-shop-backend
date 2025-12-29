@@ -327,6 +327,23 @@ async def upload_primary_image(
     created = await crud.create_product_image(db, product_color_id, file_url=file_url, sort_order=1000)
     return {"id": created.id, "file": created.file, "sort_order": created.sort_order}
 
+@router.put("/colors/{product_color_id}/images/reorder", summary="Изменить порядок изображений", status_code=204)
+async def reorder_images(
+    product_color_id: int,
+    image_ids: List[int],
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    color = await crud.get_product_color_by_id(db, product_color_id)
+    if not color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product color not found")
+    
+    await crud.reorder_product_images(db, product_color_id, image_ids)
+    return
+
 @router.delete("/images/{image_id}", summary="Удалить изображение", status_code=204)
 async def delete_image(
     image_id: int,
