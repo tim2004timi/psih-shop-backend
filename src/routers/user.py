@@ -28,10 +28,15 @@ async def update_current_user(
             detail="User not found"
         )
     
-    # Обновляем только переданные поля
+    allowed_fields = {
+        "first_name", "last_name", "phone", "avatar", 
+        "address", "city", "postal_code", "country"
+    }
+    
     update_data = user_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(user, field, value)
+        if field in allowed_fields:
+            setattr(user, field, value)
     
     await db.commit()
     await db.refresh(user)
