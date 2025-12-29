@@ -12,7 +12,8 @@ from .product import (
 from .category import (
     create_category, delete_category, get_all_categories, build_tree,
     get_products_by_category_slug, get_category_by_slug
-    , add_product_to_category, remove_product_from_category
+    , add_product_to_category, remove_product_from_category,
+    set_product_categories
 )
 from .collection import (
     get_collections, get_collections_count, get_collection_by_id, get_collection_by_slug,

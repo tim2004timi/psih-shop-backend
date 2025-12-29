@@ -90,3 +90,20 @@ async def remove_product_from_category(db: AsyncSession, product_id: int, catego
     return True
 
 
+async def set_product_categories(db: AsyncSession, product_id: int, category_ids: List[int]) -> bool:
+    """Установить список категорий для товара (удаляет старые и добавляет новые)"""
+    # Удаляем все текущие привязки
+    from sqlalchemy import delete
+    await db.execute(
+        delete(ProductCategory).where(ProductCategory.product_id == product_id)
+    )
+    
+    # Добавляем новые
+    for cat_id in category_ids:
+        link = ProductCategory(product_id=product_id, category_id=cat_id)
+        db.add(link)
+        
+    await db.commit()
+    return True
+
+

@@ -435,6 +435,24 @@ async def remove_product_category(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
     return
 
+@router.put("/base/{product_id}/categories", status_code=204, summary="Установить категории продукта")
+async def set_product_categories(
+    product_id: int,
+    category_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    # Проверяем существование продукта
+    product = await crud.get_product_by_id(db, product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    
+    await crud.set_product_categories(db, product_id, category_ids)
+    return
+
 # --- Collection management ---
 class ProductCollectionIn(BaseModel):
     collection_id: int
