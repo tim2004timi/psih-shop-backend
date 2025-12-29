@@ -23,18 +23,9 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 async def create_order(
     order_request: OrderCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[dict] = Depends(get_optional_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-    """
-    Создать заказ.
-    
-    Если пользователь авторизован, user_id будет установлен автоматически из токена.
-    Если нет - заказ создается как гостевой.
-    """
-    if current_user and current_user.get("id"):
-        order_request.order.user_id = current_user["id"]
-    else:
-        order_request.order.user_id = None
+    order_request.order.user_id = current_user["id"]
     
     try:
         order = await crud.create_order(
