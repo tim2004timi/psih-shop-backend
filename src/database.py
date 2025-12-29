@@ -62,6 +62,13 @@ async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
+            logger.info("Column sort_order added/verified in product_categories")
+    except Exception as e:
+        logger.warning(f"Could not add sort_order column (it might already exist): {e}")
+
 # Функция для удаления таблиц (для тестов)
 async def drop_tables():
     """
