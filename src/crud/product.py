@@ -100,7 +100,7 @@ async def update_product(db: AsyncSession, product_id: int, update_data: Product
 
 async def delete_product(db: AsyncSession, product_id: int) -> bool:
     """Удалить продукт"""
-    product = await get_product_by_id(db, product_id)
+    product = await db.get(Product, product_id)
     if not product:
         return False
     
@@ -152,10 +152,10 @@ async def update_product_color(db: AsyncSession, color_id: int, update_data: Pro
 
 async def delete_product_color(db: AsyncSession, color_id: int) -> bool:
     """Удалить цвет продукта"""
-    result = await db.execute(select(ProductColor).where(ProductColor.id == color_id))
-    color = result.scalar_one_or_none()
+    color = await db.get(ProductColor, color_id)
     if not color:
         return False
+    
     db.delete(color)
     await db.commit()
     return True
@@ -179,8 +179,8 @@ async def create_product_image(db: AsyncSession, product_color_id: int, *, file_
     return img
 
 async def delete_product_image(db: AsyncSession, image_id: int) -> bool:
-    result = await db.execute(select(ProductImage).where(ProductImage.id == image_id))
-    img = result.scalar_one_or_none()
+    """Удалить изображение продукта"""
+    img = await db.get(ProductImage, image_id)
     if not img:
         return False
     db.delete(img)
@@ -265,8 +265,7 @@ async def update_product_size(db: AsyncSession, size_id: int, *, size: Optional[
 
 async def delete_product_size(db: AsyncSession, size_id: int) -> bool:
     """Удалить размер продукта"""
-    result = await db.execute(select(ProductSize).where(ProductSize.id == size_id))
-    ps = result.scalar_one_or_none()
+    ps = await db.get(ProductSize, size_id)
     if not ps:
         return False
     db.delete(ps)
