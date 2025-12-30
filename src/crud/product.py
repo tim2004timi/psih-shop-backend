@@ -104,7 +104,7 @@ async def delete_product(db: AsyncSession, product_id: int) -> bool:
     if not product:
         return False
     
-    await db.delete(product)
+    db.delete(product)
     await db.commit()
     return True
 
@@ -156,7 +156,7 @@ async def delete_product_color(db: AsyncSession, color_id: int) -> bool:
     if not color:
         return False
     
-    await db.delete(color)
+    db.delete(color)
     await db.commit()
     return True
 
