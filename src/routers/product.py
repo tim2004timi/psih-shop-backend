@@ -392,6 +392,23 @@ async def update_size(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Size not found")
     return {"id": updated.id, "size": updated.size, "quantity": updated.quantity}
 
+@router.put("/colors/{product_color_id}/sizes/reorder", summary="Изменить порядок размеров", status_code=204)
+async def reorder_sizes(
+    product_color_id: int,
+    size_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    color = await crud.get_product_color_by_id(db, product_color_id)
+    if not color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product color not found")
+    
+    await crud.reorder_product_sizes(db, product_color_id, size_ids)
+    return
+
 @router.delete("/sizes/{size_id}", summary="Удалить размер", status_code=204)
 async def delete_size(
     size_id: int,

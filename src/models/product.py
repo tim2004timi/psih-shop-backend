@@ -53,6 +53,7 @@ class ProductSize(Base):
     product_color_id = Column(Integer, ForeignKey("product_colors.id", ondelete="CASCADE"), nullable=False, index=True)
     size = Column(String(10), nullable=False)
     quantity = Column(Integer, nullable=False, default=0)
+    sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (

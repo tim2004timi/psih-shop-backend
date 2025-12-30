@@ -235,7 +235,7 @@ async def list_product_sizes(db: AsyncSession, product_color_id: int) -> List[Pr
     result = await db.execute(
         select(ProductSize)
         .where(ProductSize.product_color_id == product_color_id)
-        .order_by(ProductSize.size)
+        .order_by(ProductSize.sort_order)
     )
     return result.scalars().all()
 
@@ -329,13 +329,30 @@ async def get_sizes_for_products(db: AsyncSession, product_color_ids: List[int])
     if not product_color_ids:
         return {}
     result = await db.execute(
-        select(ProductSize).where(ProductSize.product_color_id.in_(product_color_ids))
+        select(ProductSize)
+        .where(ProductSize.product_color_id.in_(product_color_ids))
+        .order_by(ProductSize.sort_order)
     )
     grouped: dict[int, list[dict]] = defaultdict(list)
     for size in result.scalars().all():
         grouped[size.product_color_id].append({
             "id": size.id,
             "size": size.size,
-            "quantity": size.quantity
+            "quantity": size.quantity,
+            "sort_order": size.sort_order
         })
     return grouped
+
+async def reorder_product_sizes(db: AsyncSession, product_color_id: int, size_ids: List[int]) -> bool:
+    """Изменить порядок размеров продукта"""
+    result = await db.execute(
+        select(ProductSize).where(ProductSize.product_color_id == product_color_id)
+    )
+    sizes = {s.id: s for s in result.scalars().all()}
+    
+    for index, size_id in enumerate(size_ids):
+        if size_id in sizes:
+            sizes[size_id].sort_order = index
+            
+    await db.commit()
+    return True
