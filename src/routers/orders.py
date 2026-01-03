@@ -12,6 +12,7 @@ from src.schemas.orders import (
     OrderProductCreate,
     OrderUpdate
 )
+from src.cdek import get_cdek_client, CDEKError
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -141,4 +142,65 @@ async def update_order(
         )
     
     return order_detail
+
+@router.post("/test_add_order_to_cdek",
+    response_model=OrderDetail,
+    summary="Тестовый endpoint: добавить заказ в CDEK",
+    description="Создает заказ в CDEK и возвращает обновленный заказ с cdek_uuid. Тестовый endpoint.")
+async def test_add_order_to_cdek(
+    order_id: int = Query(..., description="ID заказа"),
+    shipment_point: str = Query("MSK5", description="Код ПВЗ отправления"),
+    delivery_point: str = Query(..., description="Код ПВЗ доставки"),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Тестовый endpoint для создания заказа в CDEK"""
+    # Проверяем, что заказ существует
+    order = await crud.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    
+    # Проверяем права доступа (только свои заказы или админ)
+    if not current_user.get("is_admin", False):
+        if order.user_id != current_user.get("id"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only add your own orders to CDEK"
+            )
+    
+    # Получаем CDEK клиент
+    cdek_client = get_cdek_client()
+    
+    try:
+        # Создаем заказ в CDEK
+        cdek_uuid = await cdek_client.add_order_to_cdek(
+            order_id=order_id,
+            shipment_point=shipment_point,
+            delivery_point=delivery_point,
+            db=db
+        )
+        
+        # Получаем обновленный заказ
+        order_detail = await crud.get_order_detail(db, order_id)
+        if not order_detail:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve updated order"
+            )
+        
+        return order_detail
+        
+    except CDEKError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CDEK error: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to add order to CDEK: {str(e)}"
+        )
 

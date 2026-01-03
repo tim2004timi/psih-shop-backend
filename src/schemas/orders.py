@@ -12,7 +12,7 @@ class OrderBase(BaseModel):
     city: Optional[str] = Field(None, max_length=50, description="Город доставки")
     postal_code: Optional[str] = Field(None, max_length=10, description="Почтовый индекс")
     address: Optional[str] = Field(None, max_length=200, description="Адрес доставки")
-    status: OrderStatus = Field(default=OrderStatus.PROCESSING, description="Статус заказа")
+    status: OrderStatus = Field(default=OrderStatus.NOT_PAID, description="Статус заказа")
 
 class OrderCreate(OrderBase):
     user_id: Optional[int] = Field(None, description="ID пользователя (если заказ от авторизованного пользователя)")

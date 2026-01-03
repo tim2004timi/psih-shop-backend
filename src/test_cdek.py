@@ -29,9 +29,9 @@ def create_order():
     
     # Подготавливаем данные заказа
     order_data = {
-        "type": 1,  # Интернет-магазин
+        "type": 1,  # Всегда 1
         "number": "1",  # order_id
-        "tariff_code": 136,  # Посылка склад-склад
+        "tariff_code": 136,  # Посылка склад-склад 136
         "shipment_point": "MSK5",  # Код ПВЗ отправления
         "delivery_point": "MSK71",  # Код ПВЗ доставки
         "recipient": {
@@ -45,7 +45,7 @@ def create_order():
         "packages": [
             {
                 "number": "1",  # order_id
-                "weight": 300,
+                "weight": 300,  # total weight in grams
                 "items": [
                     {
                         "name": "Тестовый товар",

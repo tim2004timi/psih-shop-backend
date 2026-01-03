@@ -70,6 +70,7 @@ async def create_product(db: AsyncSession, product_create: ProductCreate) -> Pro
         description=product_create.description,
         price=product_create.price,
         discount_price=product_create.discount_price,
+        weight=product_create.weight,
         currency=product_create.currency,
         composition=product_create.composition,
         fit=product_create.fit,

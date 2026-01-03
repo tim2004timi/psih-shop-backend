@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Query
-from typing import List
+from typing import List, Dict, Any
 import logging
 
 from src.cdek import get_cdek_client, CDEKError
@@ -136,6 +136,50 @@ async def get_offices(
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_offices: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.get(
+    "/order/{uuid}",
+    summary="Получить информацию о заказе по UUID",
+    description="Получает информацию о заказе в CDEK по его UUID."
+)
+async def get_order_info_by_uuid(
+    uuid: str
+) -> Dict[str, Any]:
+    """
+    Получить информацию о заказе в CDEK по UUID
+    
+    Args:
+        uuid: UUID заказа в системе CDEK
+        
+    Returns:
+        JSON ответ с информацией о заказе
+        
+    Raises:
+        HTTPException: Если произошла ошибка при запросе к CDEK API
+    """
+    if not uuid or not uuid.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="UUID cannot be empty"
+        )
+    
+    try:
+        cdek_client = get_cdek_client()
+        order_info = await cdek_client.get_order_info_by_uuid(uuid.strip())
+        return order_info
+        
+    except CDEKError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"CDEK API error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_order_info_by_uuid: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"

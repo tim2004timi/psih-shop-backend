@@ -8,7 +8,8 @@ class ProductBase(BaseModel):
     description: Optional[str] = Field(None, description="Описание продукта")
     price: Decimal = Field(..., decimal_places=2, gt=0, description="Цена продукта (должна быть больше 0)")
     discount_price: Optional[Decimal] = Field(None, decimal_places=2, gt=0, description="Цена со скидкой (должна быть больше 0)")
-    currency: str = Field(default="EUR", max_length=3, description="Валюта")
+    weight: int = Field(..., gt=0, description="Вес продукта в граммах (должен быть больше 0)")
+    currency: str = Field(default="RUB", max_length=3, description="Валюта")
     composition: Optional[str] = Field(None, max_length=200, description="Состав продукта")
     fit: Optional[str] = Field(None, max_length=50, description="Посадка/размер")
     status: ProductStatus = Field(default=ProductStatus.IN_STOCK, description="Статус продукта")
@@ -24,6 +25,7 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     price: Optional[Decimal] = Field(None, decimal_places=2, gt=0)
     discount_price: Optional[Decimal] = Field(None, decimal_places=2, gt=0)
+    weight: Optional[int] = Field(None, gt=0, description="Вес продукта в граммах (должен быть больше 0)")
     currency: Optional[str] = Field(None, max_length=3)
     composition: Optional[str] = Field(None, max_length=200)
     fit: Optional[str] = Field(None, max_length=50)
@@ -95,6 +97,7 @@ class ProductPublic(BaseModel):
     price: Decimal
     discount_price: Optional[Decimal] = None
     currency: str
+    weight: int  # Вес продукта в граммах
     label: str  # название цвета
     hex: str  # HEX код цвета
     sizes: List[dict] = Field(default_factory=list)  # список размеров с количеством
@@ -152,6 +155,7 @@ class ProductDetail(BaseModel):
     price: Decimal
     discount_price: Optional[Decimal] = None
     currency: str
+    weight: int  # Вес продукта в граммах
     composition: Optional[str] = None
     fit: Optional[str] = None
     status: ProductStatus

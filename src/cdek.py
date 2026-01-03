@@ -106,12 +106,142 @@ class CDEKClient:
                 logger.error(f"Unexpected error while getting CDEK token: {str(e)}")
                 raise CDEKError(f"CDEK authentication failed: {str(e)}")
     
-    async def create_order(self, order_data: Dict[str, Any]) -> Dict[str, Any]:
-
+    async def add_order_to_cdek(
+        self,
+        order_id: int,
+        shipment_point: str,
+        delivery_point: str,
+        db: "AsyncSession"
+    ) -> str:
+        """
+        Создать заказ в CDEK и сохранить UUID в БД
+        
+        Args:
+            order_id: ID заказа в системе
+            shipment_point: Код ПВЗ отправления (например, "MSK5")
+            delivery_point: Код ПВЗ доставки (например, "MSK71")
+            db: Сессия БД для получения данных заказа и обновления cdek_uuid
+            
+        Returns:
+            UUID заказа в системе CDEK
+            
+        Raises:
+            CDEKError: Если не удалось создать заказ в CDEK или заказ не найден
+        """
+        # Получаем детальную информацию о заказе из БД
+        from src.crud.orders import get_order_detail
+        
+        order_detail = await get_order_detail(db, order_id)
+        if not order_detail:
+            raise CDEKError(f"Order {order_id} not found")
+        
+        # Преобразуем order_detail в dict
+        if hasattr(order_detail, "dict"):
+            order_detail_dict = order_detail.dict()
+        elif hasattr(order_detail, "model_dump"):
+            order_detail_dict = order_detail.model_dump()
+        else:
+            order_detail_dict = order_detail
+        
+        # Получаем токен
         token = await self._get_access_token()
         
-        async with httpx.AsyncClient() as client:
-            try:
+        # Подготавливаем товары для CDEK
+        items = []
+        total_weight = 0
+        
+        # Получаем список товаров
+        products_list = order_detail_dict.get("products", [])
+        
+        if not products_list:
+            raise CDEKError(f"Order {order_id} has no products")
+        
+        # Преобразуем товары в dict, если это Pydantic модели
+        products_dicts = []
+        for product in products_list:
+            if hasattr(product, "dict"):
+                products_dicts.append(product.dict())
+            elif hasattr(product, "model_dump"):
+                products_dicts.append(product.model_dump())
+            else:
+                products_dicts.append(product)
+        
+        # Получаем веса товаров из БД
+        from src.models.product import Product
+        from sqlalchemy import select
+        
+        product_ids = [p.get("product_id") for p in products_dicts if p.get("product_id")]
+        product_weights = {}
+        if product_ids:
+            products_result = await db.execute(
+                select(Product).where(Product.id.in_(product_ids))
+            )
+            products = products_result.scalars().all()
+            product_weights = {p.id: p.weight for p in products}
+        
+        for product in products_dicts:
+            # Получаем цену (используем discount_price если есть, иначе price)
+            price = product.get("discount_price") or product.get("price")
+            # Конвертируем Decimal в float для payment.value
+            price_float = float(price) if price else 0.0
+            
+            # Формируем ware_key: slug-color-size
+            ware_key = f"{product.get('slug', '')}-{product.get('label', '').lower()}-{product.get('size', '').lower()}"
+            
+            # Получаем вес товара из БД, если доступен, иначе используем значение по умолчанию
+            product_id = product.get("product_id")
+            item_weight = product_weights.get(product_id, 500) if product_id and product_weights else 500  # вес одного товара в граммах
+            
+            item = {
+                "name": f"{product.get('title', '')} ({product.get('label', '')}, {product.get('size', '')})",
+                "ware_key": ware_key,
+                "payment": {
+                    "value": price_float,  # price float
+                },
+                "cost": int(price),  # price int
+                "weight": item_weight,
+                "amount": product.get("quantity", 1)
+            }
+            items.append(item)
+            total_weight += item_weight * item["amount"]
+        
+        # Получаем данные получателя
+        first_name = order_detail_dict.get("first_name", "")
+        last_name = order_detail_dict.get("last_name", "")
+        phone = order_detail_dict.get("phone") or "+79991234567"
+        email = order_detail_dict.get("email")
+        
+        # Подготавливаем данные заказа
+        order_data = {
+            "type": 1,  # Всегда 1
+            "number": str(order_id),  # order_id
+            "tariff_code": 136,  # Посылка склад-склад 136
+            "shipment_point": shipment_point,  # Код ПВЗ отправления
+            "delivery_point": delivery_point,  # Код ПВЗ доставки
+            "recipient": {
+                "name": f"{first_name} {last_name}".strip(),
+                "phones": [
+                    {
+                        "number": phone
+                    }
+                ]
+            },
+            "packages": [
+                {
+                    "number": str(order_id),  # order_id
+                    "weight": total_weight,  # total weight in grams
+                    "items": items
+                }
+            ]
+        }
+        
+        # Добавляем email получателя, если есть
+        if email:
+            order_data["recipient"]["email"] = email
+        
+        # Отправляем запрос в CDEK
+        try:
+            async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{self.api_url}/orders",
                     json=order_data,
@@ -144,163 +274,32 @@ class CDEKClient:
                     logger.error(f"CDEK order creation returned errors: {error_msg}")
                     raise CDEKError(f"CDEK API error: {error_msg}")
                 
-                # Проверяем наличие entity в ответе
-                if "entity" not in response_data:
-                    logger.error(f"CDEK order response missing entity: {response_data}")
-                    raise CDEKError("Invalid response from CDEK: missing entity")
+                # Получаем UUID заказа
+                cdek_uuid = response_data.get("entity", {}).get("uuid")
+                if not cdek_uuid:
+                    logger.error(f"CDEK order response missing uuid: {response_data}")
+                    raise CDEKError("Invalid response from CDEK: missing uuid")
                 
-                order_uuid = response_data.get("entity", {}).get("uuid")
-                logger.info(f"CDEK order created successfully: {order_uuid}")
-                return response_data
+                # Сохраняем cdek_uuid в БД
+                from src.models.orders import Order
+                order = await db.get(Order, order_id)
+                if order:
+                    order.cdek_uuid = cdek_uuid
+                    await db.commit()
+                    logger.info(f"Updated order {order_id} with cdek_uuid: {cdek_uuid}")
                 
-            except httpx.HTTPError as e:
-                logger.error(f"HTTP error while creating CDEK order: {str(e)}")
-                raise CDEKError(f"CDEK order creation failed: {str(e)}")
-            except CDEKError:
-                raise
-            except Exception as e:
-                logger.error(f"Unexpected error while creating CDEK order: {str(e)}")
-                raise CDEKError(f"CDEK order creation failed: {str(e)}")
-    
-    async def get_order_status(self, order_uuid: str) -> Dict[str, Any]:
+                logger.info(f"CDEK order created successfully: {cdek_uuid}")
+                return cdek_uuid
+                
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error while creating CDEK order: {str(e)}")
+            raise CDEKError(f"CDEK order creation failed: {str(e)}")
+        except CDEKError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error while creating CDEK order: {str(e)}")
+            raise CDEKError(f"CDEK order creation failed: {str(e)}")
 
-        token = await self._get_access_token()
-        
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(
-                    f"{self.api_url}/orders/{order_uuid}",
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Content-Type": "application/json"
-                    },
-                    timeout=10.0
-                )
-                
-                if response.status_code != 200:
-                    error_text = response.text
-                    logger.error(f"CDEK order status request failed: {response.status_code} - {error_text}")
-                    raise CDEKError(f"Failed to get CDEK order status: {response.status_code}")
-                
-                return response.json()
-                
-            except httpx.HTTPError as e:
-                logger.error(f"HTTP error while getting CDEK order status: {str(e)}")
-                raise CDEKError(f"Failed to get CDEK order status: {str(e)}")
-            except Exception as e:
-                logger.error(f"Unexpected error while getting CDEK order status: {str(e)}")
-                raise CDEKError(f"Failed to get CDEK order status: {str(e)}")
-    
-    def prepare_order_data(
-        self,
-        order_id: int,
-        recipient_name: str,
-        recipient_phone: str,
-        recipient_email: Optional[str],
-        city: str = "Москва",
-        address: Optional[str] = None,
-        postal_code: Optional[str] = None,
-        products: Optional[List[Dict[str, Any]]] = None,
-        sender_info: Optional[Dict[str, Any]] = None,
-        tariff_code: int = 136,
-        comment: Optional[str] = None,
-        from_city: str = "Москва",
-        from_country_code: str = "RU"
-    ) -> Dict[str, Any]:
-        
-        # Подготовка товаров
-        items = []
-        total_weight = 0
-        
-        if products:
-            for idx, product in enumerate(products, 1):
-                # Получаем стоимость в копейках
-                cost = product.get("cost", 0)
-                if isinstance(cost, (Decimal, float)):
-                    cost_in_kopecks = int(cost * 100)
-                elif isinstance(cost, int):
-                    cost_in_kopecks = cost * 100  # Предполагаем, что это рубли
-                else:
-                    cost_in_kopecks = 0
-                
-                item = {
-                    "name": product.get("name", f"Товар {idx}"),
-                    "ware_key": product.get("ware_key", f"PROD-{idx}"),
-                    "payment": {
-                        "value": cost_in_kopecks,
-                        "vat_sum": 0,
-                        "vat_rate": 0
-                    },
-                    "cost": cost_in_kopecks,
-                    "amount": product.get("amount", 1),
-                    "weight": product.get("weight", 500)  # Вес в граммах
-                }
-                
-                # Добавляем URL товара, если указан
-                if "url" in product:
-                    item["url"] = product["url"]
-                
-                items.append(item)
-                total_weight += item["weight"] * item["amount"]
-        else:
-            # Если товары не указаны, создаем пустую посылку с минимальным весом
-            total_weight = 500
-        
-        # Формируем данные заказа
-        order_data = {
-            "type": 1,  # Интернет-магазин
-            "number": str(order_id),
-            # TODO: "shipment_point"
-            # "comment": comment or f"Заказ #{order_id}",
-            "recipient": {
-                "name": recipient_name,
-                "phones": [{"number": recipient_phone}],
-                "email": recipient_email
-            },
-            "delivery_recipient_cost": {
-                "value": 0  # Доставка оплачена отправителем
-            },
-            "delivery_recipient_cost_adv": [
-                {
-                    "sum": 0,
-                    "vat_sum": 0,
-                    "vat_rate": 0
-                }
-            ],
-            "from_location": {
-                "city": from_city,
-                "country_code": from_country_code
-            },
-            "to_location": {
-                "city": city,
-                "country_code": "RU"
-            },
-            "packages": [
-                {
-                    "number": f"PACK-{order_id}",
-                    "weight": max(total_weight, 500),  # Минимум 500 грамм
-                    "length": 30,  # Габариты можно вычислить или задать по умолчанию
-                    "width": 20,
-                    "height": 15,
-                    "items": items
-                }
-            ],
-            "tariff_code": tariff_code
-        }
-        
-        # Добавляем email получателя, если указан
-        if recipient_email:
-            order_data["recipient"]["email"] = recipient_email
-        
-        # Добавляем адрес доставки, если указан
-        if address:
-            order_data["to_location"]["address"] = address
-        
-        # Добавляем почтовый индекс, если указан
-        if postal_code:
-            order_data["to_location"]["postal_code"] = postal_code
-        
-        return order_data
     
     async def calculate_delivery_cost(
         self,
@@ -437,6 +436,47 @@ class CDEKClient:
         except Exception as e:
             logger.error(f"Unexpected error while getting offices: {str(e)}")
             raise CDEKError(f"Failed to get offices: {str(e)}")
+    
+    async def get_order_info_by_uuid(self, uuid: str) -> Dict[str, Any]:
+        """
+        Получить информацию о заказе в CDEK по UUID
+        
+        Args:
+            uuid: UUID заказа в системе CDEK
+            
+        Returns:
+            JSON ответ с информацией о заказе
+            
+        Raises:
+            CDEKError: Если не удалось получить информацию о заказе
+        """
+        token = await self._get_access_token()
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.api_url}/orders/{uuid}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10.0
+                )
+                
+                if response.status_code != 200:
+                    error_text = response.text
+                    logger.error(f"CDEK order info request failed: {response.status_code} - {error_text}")
+                    raise CDEKError(f"Failed to get order info: {response.status_code}")
+                
+                result = response.json()
+                logger.debug(f"Retrieved order info for UUID: {uuid}")
+                return result
+                
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error while getting order info: {str(e)}")
+            raise CDEKError(f"Failed to get order info: {str(e)}")
+        except CDEKError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error while getting order info: {str(e)}")
+            raise CDEKError(f"Failed to get order info: {str(e)}")
 
 
 # Создаем глобальный экземпляр клиента (можно использовать как singleton)
