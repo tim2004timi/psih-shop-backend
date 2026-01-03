@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from fastapi import UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
@@ -12,7 +12,7 @@ from src.schemas.product import (
     ProductColorIn, ProductSizeIn, ProductColorUpdate, ProductDetail, ProductColorDetail
 )
 from src.models.product import ProductStatus, Product, ProductColor
-from src.utils import upload_image_and_derivatives
+from src.utils import upload_image_and_derivatives, slugify
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -44,6 +44,7 @@ async def get_products(
     color_ids = [pc.id for pc in product_colors]
     sizes_map = await crud.get_sizes_for_products(db, color_ids)
     images_map = await crud.get_images_for_products(db, color_ids)
+    main_categories_map = await crud.get_main_categories_for_products(db, product_ids)
     
     public_products = []
     for pc in product_colors:
@@ -57,6 +58,7 @@ async def get_products(
             slug=pc.slug,
             title=pc.title,
             categoryPath=[],
+            main_category=main_categories_map.get(product.id),
             price=product.price,
             discount_price=product.discount_price,
             currency=product.currency,
@@ -103,6 +105,7 @@ async def get_product_by_slug(
     
     sizes_map = await crud.get_sizes_for_products(db, [product_color.id])
     images = await crud.list_product_images(db, product_color.id)
+    main_category = await crud.get_product_main_category(db, product.id)
     
     return ProductPublic(
         id=product.id,
@@ -110,6 +113,7 @@ async def get_product_by_slug(
         slug=product_color.slug,
         title=product_color.title,
         categoryPath=[],
+        main_category=main_category,
         price=product.price,
         discount_price=product.discount_price,
         currency=product.currency,
@@ -238,18 +242,35 @@ async def update_color(
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     
-    # Проверяем slug, если он обновляется
+    # Если название изменилось, а slug не передан - генерируем slug автоматически
+    # (по просьбе пользователя, чтобы slug менялся при изменении названия)
+    if color_update.title and not color_update.slug:
+        color_update.slug = slugify(color_update.title)
+    
+    # Проверяем slug, если он обновляется (передан явно или сгенерирован)
     if color_update.slug:
         if await crud.check_slug_exists(db, color_update.slug, exclude_id=color_id):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Product with this slug already exists"
-            )
+            # Если сгенерированный slug занят, попробуем добавить ID для уникальности
+            color_update.slug = f"{color_update.slug}-{color_id}"
+            # Проверяем еще раз на всякий случай
+            if await crud.check_slug_exists(db, color_update.slug, exclude_id=color_id):
+                 raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Product with this slug already exists even with suffix"
+                )
     
     updated = await crud.update_product_color(db, color_id, color_update)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Color not found")
-    return {"id": updated.id, "slug": updated.slug, "title": updated.title, "label": updated.label, "hex": updated.hex}
+        
+    return {
+        "id": updated.product_id, # Возвращаем ID базового продукта как "id" для консистентности с ProductPublic
+        "color_id": updated.id, 
+        "slug": updated.slug, 
+        "title": updated.title, 
+        "label": updated.label, 
+        "hex": updated.hex
+    }
 
 @router.delete("/colors/{color_id}", summary="Удалить цвет", status_code=204)
 async def delete_color(
@@ -285,6 +306,43 @@ async def upload_image(
     file_url = await upload_image_and_derivatives(file, file.filename)
     created = await crud.create_product_image(db, product_color_id, file_url=file_url, sort_order=sort_order)
     return {"id": created.id, "file": created.file, "sort_order": created.sort_order}
+
+@router.post("/colors/{product_color_id}/primary-image", summary="Загрузить главное изображение", status_code=201)
+async def upload_primary_image(
+    product_color_id: int,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    color = await crud.get_product_color_by_id(db, product_color_id)
+    if not color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product color not found")
+    
+    await crud.delete_primary_image(db, product_color_id)
+    
+    file_url = await upload_image_and_derivatives(file, file.filename)
+    created = await crud.create_product_image(db, product_color_id, file_url=file_url, sort_order=1000)
+    return {"id": created.id, "file": created.file, "sort_order": created.sort_order}
+
+@router.put("/colors/{product_color_id}/images/reorder", summary="Изменить порядок изображений", status_code=204)
+async def reorder_images(
+    product_color_id: int,
+    image_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    color = await crud.get_product_color_by_id(db, product_color_id)
+    if not color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product color not found")
+    
+    await crud.reorder_product_images(db, product_color_id, image_ids)
+    return
 
 @router.delete("/images/{image_id}", summary="Удалить изображение", status_code=204)
 async def delete_image(
@@ -334,6 +392,23 @@ async def update_size(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Size not found")
     return {"id": updated.id, "size": updated.size, "quantity": updated.quantity}
 
+@router.put("/colors/{product_color_id}/sizes/reorder", summary="Изменить порядок размеров", status_code=204)
+async def reorder_sizes(
+    product_color_id: int,
+    size_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    color = await crud.get_product_color_by_id(db, product_color_id)
+    if not color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product color not found")
+    
+    await crud.reorder_product_sizes(db, product_color_id, size_ids)
+    return
+
 @router.delete("/sizes/{size_id}", summary="Удалить размер", status_code=204)
 async def delete_size(
     size_id: int,
@@ -376,6 +451,32 @@ async def remove_product_category(
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
     return
+
+@router.put("/base/{product_id}/categories", status_code=204, summary="Установить категории продукта")
+async def set_product_categories(
+    product_id: int,
+    category_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    # Проверяем существование продукта
+    product = await crud.get_product_by_id(db, product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    
+    await crud.set_product_categories(db, product_id, category_ids)
+    return
+
+@router.get("/base/{product_id}/categories", summary="Получить категории продукта")
+async def get_product_categories(
+    product_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    categories = await crud.get_categories_by_product(db, product_id)
+    return [{"id": c.id, "name": c.name, "slug": c.slug} for c in categories]
 
 # --- Collection management ---
 class ProductCollectionIn(BaseModel):
@@ -426,6 +527,8 @@ async def get_product_by_id(
     
     # Получаем все цвета продукта
     colors = await crud.list_product_colors(db, product_id)
+    main_category = await crud.get_product_main_category(db, product_id)
+
     if not colors:
         # Если нет цветов, возвращаем продукт с пустым списком цветов
         return ProductDetail(
@@ -438,6 +541,7 @@ async def get_product_by_id(
             fit=product.fit,
             status=product.status,
             is_pre_order=product.is_pre_order,
+            main_category=main_category,
             meta_care=product.meta_care,
             meta_shipping=product.meta_shipping,
             meta_returns=product.meta_returns,
@@ -458,6 +562,7 @@ async def get_product_by_id(
         sizes = sizes_map.get(color.id, [])
         
         colors_detail.append(ProductColorDetail(
+            id=color.id,
             color_id=color.id,
             slug=color.slug,
             title=color.title,
@@ -477,6 +582,7 @@ async def get_product_by_id(
         fit=product.fit,
         status=product.status,
         is_pre_order=product.is_pre_order,
+        main_category=main_category,
         meta_care=product.meta_care,
         meta_shipping=product.meta_shipping,
         meta_returns=product.meta_returns,

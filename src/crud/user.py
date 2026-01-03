@@ -41,8 +41,13 @@ async def update_user(db: AsyncSession, user_id: int, update_data: dict) -> User
     if not user:
         return None
     
+    allowed_fields = {
+        "first_name", "last_name", "phone", "avatar", 
+        "address", "city", "postal_code", "country"
+    }
+    
     for field, value in update_data.items():
-        if hasattr(user, field):
+        if field in allowed_fields and hasattr(user, field):
             setattr(user, field, value)
     
     await db.commit()

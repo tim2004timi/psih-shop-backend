@@ -1,6 +1,7 @@
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.product import Product, ProductColor, ProductSize, ProductImage
+from src.models.category import Category, ProductCategory
 from src.schemas.product import ProductCreate, ProductUpdate, ProductColorCreate, ProductColorUpdate
 from typing import List, Optional
 from collections import defaultdict
@@ -99,11 +100,11 @@ async def update_product(db: AsyncSession, product_id: int, update_data: Product
 
 async def delete_product(db: AsyncSession, product_id: int) -> bool:
     """Удалить продукт"""
-    product = await get_product_by_id(db, product_id)
+    product = await db.get(Product, product_id)
     if not product:
         return False
     
-    await db.delete(product)
+    db.delete(product)
     await db.commit()
     return True
 
@@ -151,11 +152,11 @@ async def update_product_color(db: AsyncSession, color_id: int, update_data: Pro
 
 async def delete_product_color(db: AsyncSession, color_id: int) -> bool:
     """Удалить цвет продукта"""
-    result = await db.execute(select(ProductColor).where(ProductColor.id == color_id))
-    color = result.scalar_one_or_none()
+    color = await db.get(ProductColor, color_id)
     if not color:
         return False
-    await db.delete(color)
+    
+    db.delete(color)
     await db.commit()
     return True
 
@@ -179,11 +180,38 @@ async def create_product_image(db: AsyncSession, product_color_id: int, *, file_
 
 async def delete_product_image(db: AsyncSession, image_id: int) -> bool:
     """Удалить изображение продукта"""
-    result = await db.execute(select(ProductImage).where(ProductImage.id == image_id))
-    img = result.scalar_one_or_none()
+    img = await db.get(ProductImage, image_id)
     if not img:
         return False
-    await db.delete(img)
+    db.delete(img)
+    await db.commit()
+    return True
+
+async def reorder_product_images(db: AsyncSession, product_color_id: int, image_ids: List[int]) -> bool:
+    """Изменить порядок изображений продукта"""
+    result = await db.execute(
+        select(ProductImage).where(ProductImage.product_color_id == product_color_id)
+    )
+    images = {img.id: img for img in result.scalars().all()}
+    
+    for index, img_id in enumerate(image_ids):
+        if img_id in images:
+            images[img_id].sort_order = index
+            
+    await db.commit()
+    return True
+
+async def delete_primary_image(db: AsyncSession, product_color_id: int) -> bool:
+    result = await db.execute(
+        select(ProductImage)
+        .where(ProductImage.product_color_id == product_color_id)
+        .where(ProductImage.sort_order == 1000)
+    )
+    images = result.scalars().all()
+    if not images:
+        return False
+    for img in images:
+        db.delete(img)
     await db.commit()
     return True
 
@@ -207,7 +235,7 @@ async def list_product_sizes(db: AsyncSession, product_color_id: int) -> List[Pr
     result = await db.execute(
         select(ProductSize)
         .where(ProductSize.product_color_id == product_color_id)
-        .order_by(ProductSize.size)
+        .order_by(ProductSize.sort_order)
     )
     return result.scalars().all()
 
@@ -237,26 +265,94 @@ async def update_product_size(db: AsyncSession, size_id: int, *, size: Optional[
 
 async def delete_product_size(db: AsyncSession, size_id: int) -> bool:
     """Удалить размер продукта"""
-    result = await db.execute(select(ProductSize).where(ProductSize.id == size_id))
-    ps = result.scalar_one_or_none()
+    ps = await db.get(ProductSize, size_id)
     if not ps:
         return False
-    await db.delete(ps)
+    db.delete(ps)
     await db.commit()
     return True
+
+async def get_product_main_category(db: AsyncSession, product_id: int) -> Optional[dict]:
+    """Получить основную категорию продукта (уровень 0)"""
+    # Получаем все категории, к которым привязан продукт
+    query = (
+        select(Category)
+        .join(ProductCategory, ProductCategory.category_id == Category.id)
+        .where(ProductCategory.product_id == product_id)
+    )
+    result = await db.execute(query)
+    categories = result.scalars().all()
+    
+    if not categories:
+        return None
+        
+    # Ищем самую верхнюю категорию (level 0)
+    # Если продукт привязан к подкатегории, поднимаемся вверх по дереву
+    for cat in categories:
+        if cat.level == 0:
+            return {"name": cat.name, "slug": cat.slug}
+            
+        current_cat = cat
+        # Ограничим количество итераций на всякий случай, чтобы избежать бесконечного цикла
+        for _ in range(10): 
+            if current_cat.level == 0 or not current_cat.parent_id:
+                break
+            parent_query = select(Category).where(Category.id == current_cat.parent_id)
+            parent_result = await db.execute(parent_query)
+            parent_cat = parent_result.scalar_one_or_none()
+            if not parent_cat:
+                break
+            current_cat = parent_cat
+            
+        if current_cat.level == 0:
+            return {"name": current_cat.name, "slug": current_cat.slug}
+            
+    return None
+
+async def get_main_categories_for_products(db: AsyncSession, product_ids: List[int]) -> dict[int, dict]:
+    """Загрузить основные категории для списка продуктов (батч-версия)"""
+    if not product_ids:
+        return {}
+        
+    # Это упрощенная версия, которая делает запросы для каждого товара,
+    # но в будущем её можно оптимизировать одним сложным CTE запросом.
+    # Для текущего объема данных этого достаточно.
+    results = {}
+    for pid in product_ids:
+        main_cat = await get_product_main_category(db, pid)
+        if main_cat:
+            results[pid] = main_cat
+    return results
 
 async def get_sizes_for_products(db: AsyncSession, product_color_ids: List[int]) -> dict[int, list[dict]]:
     """Загрузить размеры для набора продуктов и сгруппировать по product_color_id"""
     if not product_color_ids:
         return {}
     result = await db.execute(
-        select(ProductSize).where(ProductSize.product_color_id.in_(product_color_ids))
+        select(ProductSize)
+        .where(ProductSize.product_color_id.in_(product_color_ids))
+        .order_by(ProductSize.sort_order)
     )
     grouped: dict[int, list[dict]] = defaultdict(list)
     for size in result.scalars().all():
         grouped[size.product_color_id].append({
             "id": size.id,
             "size": size.size,
-            "quantity": size.quantity
+            "quantity": size.quantity,
+            "sort_order": size.sort_order
         })
     return grouped
+
+async def reorder_product_sizes(db: AsyncSession, product_color_id: int, size_ids: List[int]) -> bool:
+    """Изменить порядок размеров продукта"""
+    result = await db.execute(
+        select(ProductSize).where(ProductSize.product_color_id == product_color_id)
+    )
+    sizes = {s.id: s for s in result.scalars().all()}
+    
+    for index, size_id in enumerate(size_ids):
+        if size_id in sizes:
+            sizes[size_id].sort_order = index
+            
+    await db.commit()
+    return True

@@ -75,7 +75,7 @@ async def delete_collection(db: AsyncSession, collection_id: int) -> bool:
     if not collection:
         return False
     
-    await db.delete(collection)
+    db.delete(collection)
     await db.commit()
     return True
 
@@ -105,7 +105,7 @@ async def delete_collection_image(db: AsyncSession, image_id: int) -> bool:
     img = result.scalar_one_or_none()
     if not img:
         return False
-    await db.delete(img)
+    db.delete(img)
     await db.commit()
     return True
 
@@ -150,6 +150,6 @@ async def remove_product_from_collection(db: AsyncSession, collection_id: int, p
     link = result.scalar_one_or_none()
     if not link:
         return False
-    await db.delete(link)
+    db.delete(link)
     await db.commit()
     return True

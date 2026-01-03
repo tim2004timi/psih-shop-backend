@@ -18,7 +18,7 @@ async def delete_category(db: AsyncSession, category_id: int) -> bool:
     cat = result.scalar_one_or_none()
     if not cat:
         return False
-    await db.delete(cat)
+    db.delete(cat)
     await db.commit()
     return True
 
@@ -55,6 +55,7 @@ async def get_products_by_category_slug(db: AsyncSession, slug: str) -> List[Pro
         .join(Product, ProductColor.product_id == Product.id)
         .join(ProductCategory, ProductCategory.product_id == Product.id)
         .where(ProductCategory.category_id == cat.id)
+        .order_by(ProductCategory.sort_order)
     )
     return result.scalars().all()
 
@@ -85,7 +86,51 @@ async def remove_product_from_category(db: AsyncSession, product_id: int, catego
     link = result.scalar_one_or_none()
     if not link:
         return False
-    await db.delete(link)
+    db.delete(link)
+    await db.commit()
+    return True
+
+
+async def set_product_categories(db: AsyncSession, product_id: int, category_ids: List[int]) -> bool:
+    """Установить список категорий для товара (удаляет старые и добавляет новые)"""
+    # Удаляем все текущие привязки
+    from sqlalchemy import delete
+    await db.execute(
+        delete(ProductCategory).where(ProductCategory.product_id == product_id)
+    )
+    
+    # Добавляем новые
+    for cat_id in category_ids:
+        link = ProductCategory(product_id=product_id, category_id=cat_id)
+        db.add(link)
+        
+    await db.commit()
+    return True
+
+
+async def get_categories_by_product(db: AsyncSession, product_id: int) -> List[Category]:
+    """Получить все категории, к которым привязан продукт"""
+    result = await db.execute(
+        select(Category)
+        .join(ProductCategory, ProductCategory.category_id == Category.id)
+        .where(ProductCategory.product_id == product_id)
+    )
+    return result.scalars().all()
+
+
+async def reorder_category_products(db: AsyncSession, category_id: int, product_ids: List[int]) -> bool:
+    """Изменить порядок товаров в категории"""
+    # Получаем все связи для данной категории
+    result = await db.execute(
+        select(ProductCategory).where(ProductCategory.category_id == category_id)
+    )
+    links = {link.product_id: link for link in result.scalars().all()}
+    
+    # Обновляем sort_order для тех, что переданы в списке
+    for index, prod_id in enumerate(product_ids):
+        if prod_id in links:
+            links[prod_id].sort_order = index
+            
     await db.commit()
     return True
 

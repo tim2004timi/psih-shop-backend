@@ -23,17 +23,9 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 async def create_order(
     order_request: OrderCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[dict] = Depends(get_optional_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
-    """
-    Создать заказ.
-    
-    Если пользователь авторизован, user_id будет установлен автоматически из токена.
-    Если нет - заказ создается как гостевой.
-    """
-    # Если пользователь авторизован, используем его ID
-    if current_user and current_user.get("id"):
-        order_request.order.user_id = current_user["id"]
+    order_request.order.user_id = current_user["id"]
     
     try:
         order = await crud.create_order(
@@ -69,7 +61,12 @@ async def get_orders(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """Получить список всех заказов"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
     orders = await crud.get_orders_detail(db, skip=skip, limit=limit)
     return orders
 

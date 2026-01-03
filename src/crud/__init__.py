@@ -5,12 +5,16 @@ from .product import (
     get_product_color_by_id, create_product_color, update_product_color, delete_product_color, list_product_colors,
     get_sizes_for_products, get_images_for_products,
     create_product_size, update_product_size, delete_product_size, list_product_sizes,
-    list_product_images, create_product_image, delete_product_image
+    list_product_images, create_product_image, delete_product_image, delete_primary_image,
+    reorder_product_images,
+    get_product_main_category, get_main_categories_for_products
 )
 from .category import (
     create_category, delete_category, get_all_categories, build_tree,
     get_products_by_category_slug, get_category_by_slug
-    , add_product_to_category, remove_product_from_category
+    , add_product_to_category, remove_product_from_category,
+    set_product_categories, get_categories_by_product,
+    reorder_category_products
 )
 from .collection import (
     get_collections, get_collections_count, get_collection_by_id, get_collection_by_slug,
