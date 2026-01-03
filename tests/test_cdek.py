@@ -76,3 +76,6 @@ async def test_get_offices_by_city_code(client: httpx.AsyncClient):
         # Проверяем, что код города совпадает
         assert office["city_code"] == city_code, "Office city_code should match requested city_code"
 
+
+
+

@@ -4,6 +4,7 @@ from src.models.base import Base
 import enum
 
 class OrderStatus(str, enum.Enum):
+    NOT_PAID = "not_paid"
     PROCESSING = "processing"
     SHIPPED = "shipped"
     DELIVERED = "delivered"
@@ -25,7 +26,8 @@ class Order(Base):
     address = Column(String(200), nullable=True)
     total_price = Column(Numeric(10, 2), nullable=False)
     delivery_method = Column(Enum(DeliveryMethod), default=DeliveryMethod.CDEK)
-    status = Column(Enum(OrderStatus), default=OrderStatus.PROCESSING)
+    status = Column(Enum(OrderStatus), default=OrderStatus.NOT_PAID)
+    cdek_uuid = Column(String(100), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, server_default=func.now())
 

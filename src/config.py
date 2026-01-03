@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     CDEK_SECURE_PASSWORD: Optional[str] = None
     CDEK_API_URL: str = "https://api.cdek.ru/v2"
     CDEK_TEST_MODE: bool = True
+    CDEK_PVZ_CODE_FROM: str = "MSK549"
+    CDEK_TEST_PVZ_CODE_FROM: str = "MSK5"
+    CDEK_TEST_PVZ_CODE_TO: str = "MSK71"
     
     class Config:
         env_file = ".env"

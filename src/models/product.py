@@ -15,7 +15,8 @@ class Product(Base):
     description = Column(Text, nullable=True)
     price = Column(Numeric(10, 2), nullable=False)
     discount_price = Column(Numeric(10, 2), nullable=True)
-    currency = Column(String(3), default="EUR")
+    weight = Column(Integer, nullable=False) # weight in grams
+    currency = Column(String(3), default="RUB")
     composition = Column(String(200), nullable=True)
     fit = Column(String(50), nullable=True)
     status = Column(Enum(ProductStatus), default=ProductStatus.IN_STOCK)
@@ -28,6 +29,7 @@ class Product(Base):
     __table_args__ = (
         CheckConstraint('price > 0', name='check_price_positive'),
         CheckConstraint('discount_price IS NULL OR discount_price > 0', name='check_discount_price_positive'),
+        CheckConstraint('weight > 0', name='check_weight_positive'),
     )
 
     def __repr__(self):
