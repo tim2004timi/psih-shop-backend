@@ -64,11 +64,20 @@ async def create_tables():
 
     try:
         async with engine.begin() as conn:
-            await conn.execute(text("ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
-            await conn.execute(text("ALTER TABLE product_sizes ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
-            logger.info("Column sort_order added/verified in product_categories and product_sizes")
+            # Пытаемся добавить колонки по одной с индивидуальной обработкой
+            try:
+                await conn.execute(text("ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
+                logger.info("Column sort_order verified in product_categories")
+            except Exception as e:
+                logger.error(f"Error adding sort_order to product_categories: {e}")
+
+            try:
+                await conn.execute(text("ALTER TABLE product_sizes ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
+                logger.info("Column sort_order verified in product_sizes")
+            except Exception as e:
+                logger.error(f"Error adding sort_order to product_sizes: {e}")
     except Exception as e:
-        logger.warning(f"Could not add sort_order column: {e}")
+        logger.error(f"General migration error: {e}")
 
 # Функция для удаления таблиц (для тестов)
 async def drop_tables():

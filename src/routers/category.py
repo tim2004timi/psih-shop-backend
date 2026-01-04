@@ -57,6 +57,7 @@ async def products_by_category(slug: str, db: AsyncSession = Depends(get_db)):
                 price=product.price,
                 discount_price=product.discount_price,
                 currency=product.currency,
+                weight=product.weight,
                 label=pc.label,
                 hex=pc.hex,
                 sizes=sizes_map.get(pc.id, []),
