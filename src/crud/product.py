@@ -183,11 +183,11 @@ async def delete_product_color(db: AsyncSession, color_id: int) -> bool:
 
 # --- ProductImage CRUD ---
 async def list_product_images(db: AsyncSession, product_color_id: int) -> List[ProductImage]:
-    """Получить список изображений продукта по цвету"""
+    """Получить список изображений продукта по цвету (главное фото всегда первое)"""
     result = await db.execute(
         select(ProductImage)
         .where(ProductImage.product_color_id == product_color_id)
-        .order_by(ProductImage.sort_order)
+        .order_by(ProductImage.sort_order.desc(), ProductImage.id.asc())
     )
     return result.scalars().all()
 
@@ -244,13 +244,13 @@ async def delete_primary_image(db: AsyncSession, product_color_id: int) -> bool:
     return True
 
 async def get_images_for_products(db: AsyncSession, product_color_ids: List[int]) -> dict[int, list[ProductImage]]:
-    """Загрузить изображения для набора продуктов и сгруппировать по product_color_id"""
+    """Загрузить изображения для набора продуктов и сгруппировать по product_color_id (главное фото первое)"""
     if not product_color_ids:
         return {}
     result = await db.execute(
         select(ProductImage)
         .where(ProductImage.product_color_id.in_(product_color_ids))
-        .order_by(ProductImage.sort_order)
+        .order_by(ProductImage.sort_order.desc(), ProductImage.id.asc())
     )
     grouped: dict[int, list[ProductImage]] = defaultdict(list)
     for image in result.scalars().all():
