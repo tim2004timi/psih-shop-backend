@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import NullPool
 from src.config import settings
 from sqlalchemy import text
 import logging
@@ -22,7 +21,10 @@ SQLALCHEMY_DATABASE_URL = settings.get_async_database_url()
 engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL,
     echo=False,  # Логирование SQL запросов (отключите в production)
-    poolclass=NullPool,  # Для избежания проблем с пулом соединений
+    pool_size=5,  # Минимальное количество соединений в пуле
+    max_overflow=10,  # Максимальное количество дополнительных соединений
+    pool_timeout=30,  # Тайм-аут ожидания свободного соединения
+    pool_recycle=3600,  # Пересоздавать соединения каждый час
     future=True,  # Для поддержки SQLAlchemy 2.0
 )
 
@@ -70,8 +72,7 @@ async def create_tables():
                 logger.info("Column sort_order verified in product_categories")
             except Exception as e:
                 logger.error(f"Error adding sort_order to product_categories: {e}")
-
-            try:
+            try:A1zeCGtUk1W%
                 await conn.execute(text("ALTER TABLE product_sizes ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
                 logger.info("Column sort_order verified in product_sizes")
             except Exception as e:
@@ -79,7 +80,6 @@ async def create_tables():
     except Exception as e:
         logger.error(f"General migration error: {e}")
 
-# Функция для удаления таблиц (для тестов)
 async def drop_tables():
     """
     Удаляет все таблицы из базы данных.

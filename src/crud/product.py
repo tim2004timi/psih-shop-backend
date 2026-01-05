@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.product import Product, ProductColor, ProductSize, ProductImage
 from src.models.category import Category, ProductCategory
 from src.schemas.product import ProductCreate, ProductUpdate, ProductColorCreate, ProductColorUpdate
+from src.utils import delete_image_from_minio
 from typing import List, Optional
 from collections import defaultdict
 
@@ -100,12 +101,24 @@ async def update_product(db: AsyncSession, product_id: int, update_data: Product
     return product
 
 async def delete_product(db: AsyncSession, product_id: int) -> bool:
-    """Удалить продукт"""
+    """Удалить продукт со всеми цветами и изображениями"""
     product = await db.get(Product, product_id)
     if not product:
         return False
     
-    db.delete(product)
+    # Получаем все цвета продукта
+    result = await db.execute(select(ProductColor).where(ProductColor.product_id == product_id))
+    colors = result.scalars().all()
+    
+    for color in colors:
+        # Для каждого цвета удаляем его изображения из хранилища
+        img_result = await db.execute(select(ProductImage).where(ProductImage.product_color_id == color.id))
+        images = img_result.scalars().all()
+        for img in images:
+            if img.file:
+                await delete_image_from_minio(img.file)
+    
+    await db.delete(product)
     await db.commit()
     return True
 
@@ -152,12 +165,19 @@ async def update_product_color(db: AsyncSession, color_id: int, update_data: Pro
     return color
 
 async def delete_product_color(db: AsyncSession, color_id: int) -> bool:
-    """Удалить цвет продукта"""
+    """Удалить цвет продукта и его изображения"""
     color = await db.get(ProductColor, color_id)
     if not color:
         return False
     
-    db.delete(color)
+    # Удаляем изображения из хранилища
+    img_result = await db.execute(select(ProductImage).where(ProductImage.product_color_id == color.id))
+    images = img_result.scalars().all()
+    for img in images:
+        if img.file:
+            await delete_image_from_minio(img.file)
+            
+    await db.delete(color)
     await db.commit()
     return True
 
@@ -184,7 +204,12 @@ async def delete_product_image(db: AsyncSession, image_id: int) -> bool:
     img = await db.get(ProductImage, image_id)
     if not img:
         return False
-    db.delete(img)
+    
+    # Сначала удаляем файл из хранилища
+    if img.file:
+        await delete_image_from_minio(img.file)
+    
+    await db.delete(img)
     await db.commit()
     return True
 
@@ -212,7 +237,9 @@ async def delete_primary_image(db: AsyncSession, product_color_id: int) -> bool:
     if not images:
         return False
     for img in images:
-        db.delete(img)
+        if img.file:
+            await delete_image_from_minio(img.file)
+        await db.delete(img)
     await db.commit()
     return True
 

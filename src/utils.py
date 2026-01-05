@@ -161,3 +161,39 @@ async def upload_image_and_derivatives(file, filename: str) -> str:
     except Exception as e:
         logger.error(f"Failed to upload image {filename}: {str(e)}", exc_info=True)
         raise
+
+async def delete_image_from_minio(file_url: str):
+    """Delete image and its derivatives from MinIO"""
+    try:
+        if not file_url:
+            return
+        
+        # URL format: http://host:port/bucket/object_name
+        # We need to extract object_name
+        parts = file_url.split('/')
+        if len(parts) < 2:
+            return
+        
+        base_object_name = parts[-1]
+        bucket = settings.MINIO_BUCKET_NAME
+        client = get_minio_client()
+        
+        # Get filename and extension
+        name, ext = os.path.splitext(base_object_name)
+        
+        # List of objects to delete
+        objects_to_delete = [
+            base_object_name,
+            f"{name}-medium{ext}",
+            f"{name}-small{ext}"
+        ]
+        
+        for obj in objects_to_delete:
+            try:
+                client.remove_object(bucket, obj)
+                logger.info(f"Deleted object from MinIO: {obj}")
+            except Exception as e:
+                logger.warning(f"Failed to delete object {obj} from MinIO: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in delete_image_from_minio: {e}", exc_info=True)
