@@ -72,7 +72,7 @@ async def create_tables():
                 logger.info("Column sort_order verified in product_categories")
             except Exception as e:
                 logger.error(f"Error adding sort_order to product_categories: {e}")
-            try:A1zeCGtUk1W%
+            try:
                 await conn.execute(text("ALTER TABLE product_sizes ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
                 logger.info("Column sort_order verified in product_sizes")
             except Exception as e:
