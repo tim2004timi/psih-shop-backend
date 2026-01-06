@@ -79,12 +79,10 @@ async def create_tables():
                 logger.error(f"Error adding sort_order to product_sizes: {e}")
             
             try:
-                # Проставляем дефолтное значение 0.1 кг тем, у кого вес NULL, 0 или меньше
-                result = await conn.execute(text("UPDATE products SET weight = 0.1 WHERE weight IS NULL OR weight <= 0;"))
-                if result.rowcount > 0:
-                    logger.info(f"Updated {result.rowcount} products with default weight value 0.1")
-                else:
-                    logger.info("No products needed weight update")
+                # Разрешаем NULL для weight и проставляем дефолты
+                await conn.execute(text("ALTER TABLE products ALTER COLUMN weight DROP NOT_NULL;"))
+                await conn.execute(text("UPDATE products SET weight = 0.1 WHERE weight IS NULL OR weight <= 0;"))
+                logger.info("Weight column updated to be nullable and default values set")
             except Exception as e:
                 logger.warning(f"Weight column update issue: {e}")
     except Exception as e:

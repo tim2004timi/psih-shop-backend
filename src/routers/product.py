@@ -50,36 +50,41 @@ async def get_products(
     
     public_products = []
     for pc in product_colors:
-        product = products_map.get(pc.product_id)
-        if not product:
+        try:
+            product = products_map.get(pc.product_id)
+            if not product:
+                continue
+                
+            # Явно конвертируем секции в схемы
+            raw_sections = sections_map.get(product.id, [])
+            validated_sections = [ProductSectionOut.model_validate(s) for s in raw_sections]
+                
+            public_products.append(ProductPublic(
+                id=product.id,
+                color_id=pc.id,
+                slug=pc.slug,
+                title=pc.title,
+                categoryPath=[],
+                main_category=main_categories_map.get(product.id),
+                price=product.price,
+                discount_price=product.discount_price,
+                currency=product.currency,
+                weight=product.weight,
+                label=pc.label,
+                hex=pc.hex,
+                sizes=sizes_map.get(pc.id, []),
+                composition=product.composition,
+                fit=product.fit,
+                description=product.description,
+                images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
+                meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
+                status=product.status,
+                custom_sections=validated_sections
+            ))
+        except Exception as e:
+            logger.error(f"Error validating product {pc.slug}: {e}")
+            # Пропускаем проблемный товар вместо падения всего API
             continue
-            
-        # Явно конвертируем секции в схемы
-        raw_sections = sections_map.get(product.id, [])
-        validated_sections = [ProductSectionOut.model_validate(s) for s in raw_sections]
-            
-        public_products.append(ProductPublic(
-            id=product.id,
-            color_id=pc.id,
-            slug=pc.slug,
-            title=pc.title,
-            categoryPath=[],
-            main_category=main_categories_map.get(product.id),
-            price=product.price,
-            discount_price=product.discount_price,
-            currency=product.currency,
-            weight=product.weight,
-            label=pc.label,
-            hex=pc.hex,
-            sizes=sizes_map.get(pc.id, []),
-            composition=product.composition,
-            fit=product.fit,
-            description=product.description,
-            images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
-            meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-            status=product.status,
-            custom_sections=validated_sections
-        ))
 
     return ProductList(
         products=public_products,
