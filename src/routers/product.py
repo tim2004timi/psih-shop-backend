@@ -54,6 +54,10 @@ async def get_products(
         if not product:
             continue
             
+        # Явно конвертируем секции в схемы
+        raw_sections = sections_map.get(product.id, [])
+        validated_sections = [ProductSectionOut.model_validate(s) for s in raw_sections]
+            
         public_products.append(ProductPublic(
             id=product.id,
             color_id=pc.id,
@@ -74,7 +78,7 @@ async def get_products(
             images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
             meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
             status=product.status,
-            custom_sections=sections_map.get(product.id, [])
+            custom_sections=validated_sections
         ))
 
     return ProductList(
@@ -112,6 +116,9 @@ async def get_product_by_slug(
     main_category = await crud.get_product_main_category(db, product.id)
     sections = await crud.list_product_sections(db, product.id)
     
+    # Конвертируем секции
+    validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
+    
     return ProductPublic(
         id=product.id,
         color_id=product_color.id,
@@ -132,7 +139,7 @@ async def get_product_by_slug(
         images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
         meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
         status=product.status,
-        custom_sections=sections
+        custom_sections=validated_sections
     )
 
 # --- Product management ---
@@ -622,6 +629,9 @@ async def get_product_by_id(
     colors = await crud.list_product_colors(db, product_id)
     main_category = await crud.get_product_main_category(db, product_id)
     sections = await crud.list_product_sections(db, product_id)
+    
+    # Конвертируем секции
+    validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
 
     if not colors:
         # Если нет цветов, возвращаем продукт с пустым списком цветов
@@ -641,7 +651,7 @@ async def get_product_by_id(
             meta_shipping=product.meta_shipping,
             meta_returns=product.meta_returns,
             colors=[],
-            custom_sections=sections
+            custom_sections=validated_sections
         )
     
     # Получаем все ID цветов для загрузки изображений и размеров
@@ -684,5 +694,5 @@ async def get_product_by_id(
         meta_shipping=product.meta_shipping,
         meta_returns=product.meta_returns,
         colors=colors_detail,
-        custom_sections=sections
+        custom_sections=validated_sections
     )

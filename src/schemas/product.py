@@ -4,6 +4,26 @@ from typing import Optional, List
 from decimal import Decimal
 from src.models.product import ProductStatus
 
+class ProductSectionBase(BaseModel):
+    title: str = Field(..., max_length=200, description="Заголовок аккордеона")
+    content: str = Field(..., description="Содержимое аккордеона")
+    sort_order: int = Field(default=0, description="Порядок сортировки")
+
+class ProductSectionCreate(ProductSectionBase):
+    pass
+
+class ProductSectionUpdate(BaseModel):
+    title: Optional[str] = Field(None, max_length=200)
+    content: Optional[str] = None
+    sort_order: Optional[int] = None
+
+class ProductSectionOut(ProductSectionBase):
+    id: int
+    product_id: int
+
+    class Config:
+        from_attributes = True
+
 class ProductBase(BaseModel):
     description: Optional[str] = Field(None, description="Описание продукта")
     price: Decimal = Field(..., decimal_places=2, gt=0, description="Цена продукта (должна быть больше 0)")
@@ -107,7 +127,10 @@ class ProductPublic(BaseModel):
     images: List[ProductImageOut] = Field(default_factory=list)
     meta: ProductMeta
     status: ProductStatus
-    custom_sections: List["ProductSectionOut"] = Field(default_factory=list)
+    custom_sections: List[ProductSectionOut] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
 
 class ProductSizeBase(BaseModel):
     size: str = Field(..., max_length=10, description="Размер")
@@ -166,29 +189,7 @@ class ProductDetail(BaseModel):
     meta_shipping: Optional[str] = None
     meta_returns: Optional[str] = None
     colors: List[ProductColorDetail] = Field(default_factory=list)
-    custom_sections: List["ProductSectionOut"] = Field(default_factory=list)
-
-
-class ProductSectionBase(BaseModel):
-    title: str = Field(..., max_length=200, description="Заголовок аккордеона")
-    content: str = Field(..., description="Содержимое аккордеона")
-    sort_order: int = Field(default=0, description="Порядок сортировки")
-
-class ProductSectionCreate(ProductSectionBase):
-    pass
-
-class ProductSectionUpdate(BaseModel):
-    title: Optional[str] = Field(None, max_length=200)
-    content: Optional[str] = None
-    sort_order: Optional[int] = None
-
-class ProductSectionOut(ProductSectionBase):
-    id: int
-    product_id: int
+    custom_sections: List[ProductSectionOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
-
-# Перестраиваем модели в конце файла, когда все классы уже определены
-ProductPublic.model_rebuild()
-ProductDetail.model_rebuild()
