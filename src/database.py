@@ -79,13 +79,27 @@ async def create_tables():
                 logger.error(f"Error adding sort_order to product_sizes: {e}")
             
             try:
-                # Изменяем тип колонки weight на DOUBLE PRECISION (Float) с явным преобразованием
-                await conn.execute(text("ALTER TABLE products ALTER COLUMN weight TYPE DOUBLE PRECISION USING weight::DOUBLE PRECISION;"))
+                # Проверяем текущий тип колонки weight
+                check_type = await conn.execute(text(
+                    "SELECT data_type FROM information_schema.columns "
+                    "WHERE table_name = 'products' AND column_name = 'weight'"
+                ))
+                current_type = check_type.scalar()
+                
+                # Если тип не DOUBLE PRECISION, пытаемся изменить
+                if current_type and current_type.upper() != 'DOUBLE PRECISION':
+                    logger.info(f"Converting weight column from {current_type} to DOUBLE PRECISION")
+                    await conn.execute(text(
+                        "ALTER TABLE products ALTER COLUMN weight TYPE DOUBLE PRECISION "
+                        "USING CASE WHEN weight IS NULL THEN 0.1 ELSE weight::DOUBLE PRECISION END"
+                    ))
+                    logger.info("Column weight type updated to DOUBLE PRECISION")
+                
                 # Проставляем дефолтное значение 0.1 кг тем, у кого вес NULL или 0
                 await conn.execute(text("UPDATE products SET weight = 0.1 WHERE weight IS NULL OR weight = 0;"))
-                logger.info("Column weight type updated and default values set in products")
+                logger.info("Default weight values set in products")
             except Exception as e:
-                logger.debug(f"Note: Weight type update might have been skipped or already done: {e}")
+                logger.warning(f"Weight column migration issue: {e}")
     except Exception as e:
         logger.error(f"General migration error: {e}")
 
