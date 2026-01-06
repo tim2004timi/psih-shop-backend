@@ -117,7 +117,7 @@ class ProductPublic(BaseModel):
     price: Decimal
     discount_price: Optional[Decimal] = None
     currency: str
-    weight: float  # Вес продукта
+    weight: Optional[float] = None  # Вес продукта (теперь может быть None)
     label: str  # название цвета
     hex: str  # HEX код цвета
     sizes: List[dict] = Field(default_factory=list)  # список размеров с количеством
@@ -179,7 +179,7 @@ class ProductDetail(BaseModel):
     price: Decimal
     discount_price: Optional[Decimal] = None
     currency: str
-    weight: float  # Вес продукта
+    weight: Optional[float] = None  # Вес продукта (теперь может быть None)
     composition: Optional[str] = None
     fit: Optional[str] = None
     status: ProductStatus
