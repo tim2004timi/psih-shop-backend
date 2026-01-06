@@ -55,9 +55,25 @@ async def get_products(
             if not product:
                 continue
                 
-            # Явно конвертируем секции в схемы
+            # Безопасная конвертация секций
             raw_sections = sections_map.get(product.id, [])
-            validated_sections = [ProductSectionOut.model_validate(s) for s in raw_sections]
+            validated_sections = []
+            for s in raw_sections:
+                try:
+                    # Используем универсальный способ валидации
+                    if hasattr(ProductSectionOut, "model_validate"):
+                        validated_sections.append(ProductSectionOut.model_validate(s))
+                    else:
+                        validated_sections.append(ProductSectionOut.from_orm(s))
+                except Exception as sec_e:
+                    logger.warning(f"Error validating section for product {pc.slug}: {sec_e}")
+
+            # Формируем мета-данные
+            meta_data = ProductMeta(
+                care=getattr(product, 'meta_care', None), 
+                shipping=getattr(product, 'meta_shipping', None), 
+                returns=getattr(product, 'meta_returns', None)
+            )
                 
             public_products.append(ProductPublic(
                 id=product.id,
@@ -77,13 +93,12 @@ async def get_products(
                 fit=product.fit,
                 description=product.description,
                 images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
-                meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
+                meta=meta_data,
                 status=product.status,
                 custom_sections=validated_sections
             ))
         except Exception as e:
-            logger.error(f"Error validating product {pc.slug}: {e}")
-            # Пропускаем проблемный товар вместо падения всего API
+            logger.error(f"CRITICAL: Failed to validate product {getattr(pc, 'slug', 'unknown')}: {str(e)}")
             continue
 
     return ProductList(

@@ -23,6 +23,7 @@ class ProductSectionOut(ProductSectionBase):
 
     class Config:
         from_attributes = True
+        orm_mode = True
 
 class ProductBase(BaseModel):
     description: Optional[str] = Field(None, description="Описание продукта")
@@ -61,6 +62,7 @@ class ProductInDB(ProductBase):
 
     class Config:
         from_attributes = True
+        orm_mode = True
 
 class ProductColorBase(BaseModel):
     slug: str = Field(..., max_length=100, description="Уникальный slug для продукта с цветом")
@@ -84,6 +86,7 @@ class ProductColorOut(ProductColorBase):
 
     class Config:
         from_attributes = True
+        orm_mode = True
 
 class ProductColorIn(BaseModel):
     slug: str
@@ -131,6 +134,7 @@ class ProductPublic(BaseModel):
 
     class Config:
         from_attributes = True
+        orm_mode = True
 
 class ProductSizeBase(BaseModel):
     size: str = Field(..., max_length=10, description="Размер")
@@ -150,6 +154,7 @@ class ProductSizeOut(ProductSizeBase):
 
     class Config:
         from_attributes = True
+        orm_mode = True
 
 class ProductSizeIn(BaseModel):
     size: str
@@ -193,3 +198,4 @@ class ProductDetail(BaseModel):
 
     class Config:
         from_attributes = True
+        orm_mode = True
