@@ -1,8 +1,11 @@
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.models.product import Product, ProductColor, ProductSize, ProductImage
+from src.models.product import Product, ProductColor, ProductSize, ProductImage, ProductSection
 from src.models.category import Category, ProductCategory
-from src.schemas.product import ProductCreate, ProductUpdate, ProductColorCreate, ProductColorUpdate
+from src.schemas.product import (
+    ProductCreate, ProductUpdate, ProductColorCreate, ProductColorUpdate,
+    ProductSectionCreate, ProductSectionUpdate
+)
 from src.utils import delete_image_from_minio
 from typing import List, Optional
 from collections import defaultdict
@@ -384,3 +387,79 @@ async def reorder_product_sizes(db: AsyncSession, product_color_id: int, size_id
             
     await db.commit()
     return True
+
+
+# --- ProductSection CRUD ---
+async def list_product_sections(db: AsyncSession, product_id: int) -> List[ProductSection]:
+    """Получить список аккордеонов продукта"""
+    result = await db.execute(
+        select(ProductSection)
+        .where(ProductSection.product_id == product_id)
+        .order_by(ProductSection.sort_order)
+    )
+    return result.scalars().all()
+
+async def create_product_section(db: AsyncSession, product_id: int, section_in: ProductSectionCreate) -> ProductSection:
+    """Создать новый аккордеон"""
+    db_section = ProductSection(
+        product_id=product_id,
+        title=section_in.title,
+        content=section_in.content,
+        sort_order=section_in.sort_order
+    )
+    db.add(db_section)
+    await db.commit()
+    await db.refresh(db_section)
+    return db_section
+
+async def update_product_section(db: AsyncSession, section_id: int, section_update: ProductSectionUpdate) -> Optional[ProductSection]:
+    """Обновить аккордеон"""
+    db_section = await db.get(ProductSection, section_id)
+    if not db_section:
+        return None
+    
+    update_data = section_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_section, field, value)
+    
+    await db.commit()
+    await db.refresh(db_section)
+    return db_section
+
+async def delete_product_section(db: AsyncSession, section_id: int) -> bool:
+    """Удалить аккордеон"""
+    db_section = await db.get(ProductSection, section_id)
+    if not db_section:
+        return False
+    
+    await db.delete(db_section)
+    await db.commit()
+    return True
+
+async def reorder_product_sections(db: AsyncSession, product_id: int, section_ids: List[int]) -> bool:
+    """Изменить порядок аккордеонов продукта"""
+    result = await db.execute(
+        select(ProductSection).where(ProductSection.product_id == product_id)
+    )
+    sections = {s.id: s for s in result.scalars().all()}
+    
+    for index, section_id in enumerate(section_ids):
+        if section_id in sections:
+            sections[section_id].sort_order = index
+            
+    await db.commit()
+    return True
+
+async def get_sections_for_products(db: AsyncSession, product_ids: List[int]) -> dict[int, list[ProductSection]]:
+    """Загрузить аккордеоны для набора продуктов и сгруппировать по product_id"""
+    if not product_ids:
+        return {}
+    result = await db.execute(
+        select(ProductSection)
+        .where(ProductSection.product_id.in_(product_ids))
+        .order_by(ProductSection.sort_order)
+    )
+    grouped: dict[int, list[ProductSection]] = defaultdict(list)
+    for section in result.scalars().all():
+        grouped[section.product_id].append(section)
+    return grouped

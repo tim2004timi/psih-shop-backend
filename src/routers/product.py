@@ -9,9 +9,10 @@ from src.auth import get_current_user
 from src import crud
 from src.schemas.product import (
     ProductCreate, ProductUpdate, ProductList, ProductPublic, ProductMeta,
-    ProductColorIn, ProductSizeIn, ProductColorUpdate, ProductDetail, ProductColorDetail
+    ProductColorIn, ProductSizeIn, ProductColorUpdate, ProductDetail, ProductColorDetail,
+    ProductSectionCreate, ProductSectionUpdate, ProductSectionOut
 )
-from src.models.product import ProductStatus, Product, ProductColor
+from src.models.product import ProductStatus, Product, ProductColor, ProductSection
 from src.utils import upload_image_and_derivatives, slugify
 from pydantic import BaseModel
 
@@ -40,11 +41,12 @@ async def get_products(
         for p in result.scalars().all():
             products_map[p.id] = p
     
-    # Получаем размеры и изображения
+    # Получаем размеры, изображения и аккордеоны
     color_ids = [pc.id for pc in product_colors]
     sizes_map = await crud.get_sizes_for_products(db, color_ids)
     images_map = await crud.get_images_for_products(db, color_ids)
     main_categories_map = await crud.get_main_categories_for_products(db, product_ids)
+    sections_map = await crud.get_sections_for_products(db, product_ids)
     
     public_products = []
     for pc in product_colors:
@@ -72,6 +74,7 @@ async def get_products(
             images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
             meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
             status=product.status,
+            custom_sections=sections_map.get(product.id, [])
         ))
 
     return ProductList(
@@ -107,6 +110,7 @@ async def get_product_by_slug(
     sizes_map = await crud.get_sizes_for_products(db, [product_color.id])
     images = await crud.list_product_images(db, product_color.id)
     main_category = await crud.get_product_main_category(db, product.id)
+    sections = await crud.list_product_sections(db, product.id)
     
     return ProductPublic(
         id=product.id,
@@ -128,6 +132,7 @@ async def get_product_by_slug(
         images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
         meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
         status=product.status,
+        custom_sections=sections
     )
 
 # --- Product management ---
@@ -424,6 +429,92 @@ async def delete_size(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Size not found")
     return
 
+# --- ProductSection management ---
+@router.get("/{product_id}/sections", 
+    response_model=List[ProductSectionOut],
+    summary="Получить все аккордеоны товара")
+async def list_sections(
+    product_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    sections = await crud.list_product_sections(db, product_id)
+    return sections
+
+@router.post("/{product_id}/sections", 
+    response_model=ProductSectionOut,
+    status_code=201,
+    summary="Добавить новый аккордеон")
+async def add_section(
+    product_id: int,
+    section: ProductSectionCreate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    # Проверяем существование продукта
+    product = await crud.get_product_by_id(db, product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        
+    created = await crud.create_product_section(db, product_id, section)
+    return created
+
+@router.put("/sections/{section_id}", 
+    response_model=ProductSectionOut,
+    summary="Обновить существующий заголовок или контент")
+async def update_section(
+    section_id: int,
+    section_update: ProductSectionUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    updated = await crud.update_product_section(db, section_id, section_update)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Section not found")
+        
+    return updated
+
+@router.delete("/sections/{section_id}", 
+    status_code=204,
+    summary="Удалить аккордеон")
+async def delete_section(
+    section_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    ok = await crud.delete_product_section(db, section_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Section not found")
+    return
+
+@router.put("/{product_id}/sections/reorder", 
+    status_code=204,
+    summary="Массовое обновление sort_order")
+async def reorder_sections(
+    product_id: int,
+    section_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    # Проверяем существование продукта
+    product = await crud.get_product_by_id(db, product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    
+    await crud.reorder_product_sections(db, product_id, section_ids)
+    return
+
 # --- Categorization management ---
 class ProductCategoryIn(BaseModel):
     category_id: int
@@ -530,6 +621,7 @@ async def get_product_by_id(
     # Получаем все цвета продукта
     colors = await crud.list_product_colors(db, product_id)
     main_category = await crud.get_product_main_category(db, product_id)
+    sections = await crud.list_product_sections(db, product_id)
 
     if not colors:
         # Если нет цветов, возвращаем продукт с пустым списком цветов
@@ -548,7 +640,8 @@ async def get_product_by_id(
             meta_care=product.meta_care,
             meta_shipping=product.meta_shipping,
             meta_returns=product.meta_returns,
-            colors=[]
+            colors=[],
+            custom_sections=sections
         )
     
     # Получаем все ID цветов для загрузки изображений и размеров
@@ -590,5 +683,6 @@ async def get_product_by_id(
         meta_care=product.meta_care,
         meta_shipping=product.meta_shipping,
         meta_returns=product.meta_returns,
-        colors=colors_detail
+        colors=colors_detail,
+        custom_sections=sections
     )

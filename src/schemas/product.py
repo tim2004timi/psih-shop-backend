@@ -8,7 +8,7 @@ class ProductBase(BaseModel):
     description: Optional[str] = Field(None, description="Описание продукта")
     price: Decimal = Field(..., decimal_places=2, gt=0, description="Цена продукта (должна быть больше 0)")
     discount_price: Optional[Decimal] = Field(None, decimal_places=2, gt=0, description="Цена со скидкой (должна быть больше 0)")
-    weight: int = Field(..., gt=0, description="Вес продукта в граммах (должен быть больше 0)")
+    weight: float = Field(..., gt=0, description="Вес продукта в КГ (например, 0.5)")
     currency: str = Field(default="RUB", max_length=3, description="Валюта")
     composition: Optional[str] = Field(None, max_length=200, description="Состав продукта")
     fit: Optional[str] = Field(None, max_length=50, description="Посадка/размер")
@@ -25,7 +25,7 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     price: Optional[Decimal] = Field(None, decimal_places=2, gt=0)
     discount_price: Optional[Decimal] = Field(None, decimal_places=2, gt=0)
-    weight: Optional[int] = Field(None, gt=0, description="Вес продукта в граммах (должен быть больше 0)")
+    weight: Optional[float] = Field(None, gt=0, description="Вес продукта в КГ (например, 0.5)")
     currency: Optional[str] = Field(None, max_length=3)
     composition: Optional[str] = Field(None, max_length=200)
     fit: Optional[str] = Field(None, max_length=50)
@@ -97,7 +97,7 @@ class ProductPublic(BaseModel):
     price: Decimal
     discount_price: Optional[Decimal] = None
     currency: str
-    weight: int  # Вес продукта в граммах
+    weight: float  # Вес продукта
     label: str  # название цвета
     hex: str  # HEX код цвета
     sizes: List[dict] = Field(default_factory=list)  # список размеров с количеством
@@ -107,6 +107,11 @@ class ProductPublic(BaseModel):
     images: List[ProductImageOut] = Field(default_factory=list)
     meta: ProductMeta
     status: ProductStatus
+    custom_sections: List["ProductSectionOut"] = Field(default_factory=list)
+
+class ProductPublicRebuilt(ProductPublic):
+    pass
+ProductPublic.model_rebuild()
 
 class ProductSizeBase(BaseModel):
     size: str = Field(..., max_length=10, description="Размер")
@@ -155,7 +160,7 @@ class ProductDetail(BaseModel):
     price: Decimal
     discount_price: Optional[Decimal] = None
     currency: str
-    weight: int  # Вес продукта в граммах
+    weight: float  # Вес продукта
     composition: Optional[str] = None
     fit: Optional[str] = None
     status: ProductStatus
@@ -165,3 +170,28 @@ class ProductDetail(BaseModel):
     meta_shipping: Optional[str] = None
     meta_returns: Optional[str] = None
     colors: List[ProductColorDetail] = Field(default_factory=list)
+    custom_sections: List["ProductSectionOut"] = Field(default_factory=list)
+
+
+class ProductSectionBase(BaseModel):
+    title: str = Field(..., max_length=200, description="Заголовок аккордеона")
+    content: str = Field(..., description="Содержимое аккордеона")
+    sort_order: int = Field(default=0, description="Порядок сортировки")
+
+class ProductSectionCreate(ProductSectionBase):
+    pass
+
+class ProductSectionUpdate(BaseModel):
+    title: Optional[str] = Field(None, max_length=200)
+    content: Optional[str] = None
+    sort_order: Optional[int] = None
+
+class ProductSectionOut(ProductSectionBase):
+    id: int
+    product_id: int
+
+    class Config:
+        from_attributes = True
+
+# Update forward refs
+ProductDetail.model_rebuild()

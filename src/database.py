@@ -77,6 +77,12 @@ async def create_tables():
                 logger.info("Column sort_order verified in product_sizes")
             except Exception as e:
                 logger.error(f"Error adding sort_order to product_sizes: {e}")
+            
+            try:
+                await conn.execute(text("ALTER TABLE products ALTER COLUMN weight TYPE DOUBLE PRECISION;"))
+                logger.info("Column weight type updated to DOUBLE PRECISION in products")
+            except Exception as e:
+                logger.error(f"Error updating weight type in products: {e}")
     except Exception as e:
         logger.error(f"General migration error: {e}")
 
@@ -88,7 +94,6 @@ async def drop_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
-# Функция для проверки подключения к БД
 async def check_db_connection():
     """
     Проверяет подключение к базе данных.
