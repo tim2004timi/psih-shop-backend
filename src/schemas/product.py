@@ -109,10 +109,6 @@ class ProductPublic(BaseModel):
     status: ProductStatus
     custom_sections: List["ProductSectionOut"] = Field(default_factory=list)
 
-class ProductPublicRebuilt(ProductPublic):
-    pass
-ProductPublic.model_rebuild()
-
 class ProductSizeBase(BaseModel):
     size: str = Field(..., max_length=10, description="Размер")
     quantity: int = Field(..., ge=0, description="Количество")
@@ -193,5 +189,6 @@ class ProductSectionOut(ProductSectionBase):
     class Config:
         from_attributes = True
 
-# Update forward refs
+# Перестраиваем модели в конце файла, когда все классы уже определены
+ProductPublic.model_rebuild()
 ProductDetail.model_rebuild()

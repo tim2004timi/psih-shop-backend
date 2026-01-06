@@ -79,10 +79,11 @@ async def create_tables():
                 logger.error(f"Error adding sort_order to product_sizes: {e}")
             
             try:
-                await conn.execute(text("ALTER TABLE products ALTER COLUMN weight TYPE DOUBLE PRECISION;"))
+                # Изменяем тип колонки weight на DOUBLE PRECISION (Float) с явным преобразованием
+                await conn.execute(text("ALTER TABLE products ALTER COLUMN weight TYPE DOUBLE PRECISION USING weight::DOUBLE PRECISION;"))
                 logger.info("Column weight type updated to DOUBLE PRECISION in products")
             except Exception as e:
-                logger.error(f"Error updating weight type in products: {e}")
+                logger.debug(f"Note: Weight type update might have been skipped or already done: {e}")
     except Exception as e:
         logger.error(f"General migration error: {e}")
 
