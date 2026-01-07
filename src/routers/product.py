@@ -3,6 +3,7 @@ from fastapi import UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from sqlalchemy import select
+import logging
 
 from src.database import get_db
 from src.auth import get_current_user
@@ -15,6 +16,9 @@ from src.schemas.product import (
 from src.models.product import ProductStatus, Product, ProductColor, ProductSection
 from src.utils import upload_image_and_derivatives, slugify
 from pydantic import BaseModel
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
