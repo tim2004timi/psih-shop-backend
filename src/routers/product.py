@@ -3,6 +3,7 @@ from fastapi import UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 import logging
 
 from src.database import get_db
@@ -17,12 +18,9 @@ from src.models.product import ProductStatus, Product, ProductColor, ProductSect
 from src.utils import upload_image_and_derivatives, slugify
 from pydantic import BaseModel
 
-# Setup logger
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/products", tags=["Products"])
-
-from src.database import create_tables
 
 @router.get("", 
     response_model=ProductList,
@@ -333,15 +331,17 @@ async def add_color(
             label=color.label, 
             hex=color.hex
         )
-    except Exception as e:
-        logger.error(f"Error creating product color: {e}")
-        # Если это IntegrityError, скорее всего, проблема с уникальностью slug (миграция не прошла)
-        if "unique constraint" in str(e).lower() or "integrity" in str(e).lower():
-             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Database integrity error. Likely a duplicate slug. Please ensure database migrations are applied."
-            )
-        raise e
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Product with this slug already exists"
+        )
+    except Exception:
+        logger.exception("Error creating product color")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error"
+        )
 
     return {"id": created.id, "slug": created.slug, "title": created.title, "label": created.label, "hex": created.hex}
 
@@ -378,7 +378,7 @@ async def update_color(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Color not found")
         
     return {
-        "id": updated.product_id, # Возвращаем ID базового продукта как "id" для консистентности с ProductPublic
+        "id": updated.product_id,
         "color_id": updated.id, 
         "slug": updated.slug, 
         "title": updated.title, 

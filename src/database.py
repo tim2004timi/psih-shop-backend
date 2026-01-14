@@ -80,54 +80,55 @@ async def create_tables():
             
             try:
                 # Разрешаем NULL для weight и проставляем дефолты
-                await conn.execute(text("ALTER TABLE products ALTER COLUMN weight DROP NOT_NULL;"))
+                await conn.execute(text("ALTER TABLE products ALTER COLUMN weight DROP NOT NULL;"))
                 await conn.execute(text("UPDATE products SET weight = 0.1 WHERE weight IS NULL OR weight <= 0;"))
                 logger.info("Weight column updated to be nullable and default values set")
             except Exception as e:
                 logger.warning(f"Weight column update issue: {e}")
 
             try:
-                # 1. Сначала пробуем найти и удалить CONSTRAINT (как раньше)
-                constraint_query = text("""
-                    SELECT conname
-                    FROM pg_constraint
-                    WHERE conrelid = 'product_colors'::regclass
-                    AND contype = 'u'
-                    AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = 'product_colors'::regclass AND attname = 'slug')];
-                """)
-                result = await conn.execute(constraint_query)
-                constraint_name = result.scalar_one_or_none()
+                await conn.execute(text("""
+                    DO $$
+                    DECLARE r record;
+                    BEGIN
+                        FOR r IN
+                            SELECT c.conname AS name
+                            FROM pg_constraint c
+                            JOIN pg_class t ON t.oid = c.conrelid
+                            WHERE t.relname = 'product_colors'
+                              AND c.contype = 'u'
+                              AND array_length(c.conkey, 1) = 1
+                              AND (
+                                SELECT a.attname
+                                FROM pg_attribute a
+                                WHERE a.attrelid = t.oid AND a.attnum = c.conkey[1]
+                              ) = 'slug'
+                        LOOP
+                            EXECUTE format('ALTER TABLE %I DROP CONSTRAINT IF EXISTS %I', 'product_colors', r.name);
+                        END LOOP;
 
-                if constraint_name:
-                    await conn.execute(text(f"ALTER TABLE product_colors DROP CONSTRAINT {constraint_name};"))
-                    logger.info(f"Dropped unique constraint: {constraint_name}")
-                
-                # 2. Теперь ищем ЛЮБОЙ уникальный индекс на поле slug, который мог остаться (даже если это не constraint)
-                index_query = text("""
-                    SELECT i.relname as index_name
-                    FROM pg_class t, pg_class i, pg_index ix, pg_attribute a
-                    WHERE t.oid = ix.indrelid
-                    AND i.oid = ix.indexrelid
-                    AND a.attrelid = t.oid
-                    AND a.attnum = ANY(ix.indkey)
-                    AND t.relname = 'product_colors'
-                    AND a.attname = 'slug'
-                    AND ix.indisunique = true;
-                """)
-                result = await conn.execute(index_query)
-                unique_indexes = result.scalars().all()
-                
-                for index_name in unique_indexes:
-                    await conn.execute(text(f"DROP INDEX IF EXISTS {index_name};"))
-                    logger.info(f"Dropped unique index: {index_name}")
+                        FOR r IN
+                            SELECT i.relname AS name
+                            FROM pg_class t
+                            JOIN pg_index ix ON t.oid = ix.indrelid
+                            JOIN pg_class i ON i.oid = ix.indexrelid
+                            WHERE t.relname = 'product_colors'
+                              AND ix.indisunique = true
+                              AND array_length(ix.indkey::smallint[], 1) = 1
+                              AND (
+                                SELECT a.attname
+                                FROM pg_attribute a
+                                WHERE a.attrelid = t.oid AND a.attnum = (ix.indkey::smallint[])[1]
+                              ) = 'slug'
+                        LOOP
+                            EXECUTE format('DROP INDEX IF EXISTS %I', r.name);
+                        END LOOP;
+                    END $$;
+                """))
 
-                # 3. Чистим стандартные имена на всякий случай
                 await conn.execute(text("DROP INDEX IF EXISTS ix_product_colors_slug;"))
-                await conn.execute(text("DROP INDEX IF EXISTS product_colors_slug_key;"))
-                
-                # 4. Создаем обычный (неуникальный) индекс
                 await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_product_colors_slug ON product_colors (slug);"))
-                logger.info("Unique constraint removed and normal index created for product_colors.slug")
+                logger.info("product_colors.slug index verified")
             except Exception as e:
                 logger.warning(f"Error removing unique constraint from product_colors.slug: {e}")
     except Exception as e:
