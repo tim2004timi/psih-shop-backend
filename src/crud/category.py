@@ -60,6 +60,33 @@ async def get_products_by_category_slug(db: AsyncSession, slug: str) -> List[Pro
     return result.scalars().all()
 
 
+async def check_category_assignment_collision(db: AsyncSession, product_id: int, category_id: int) -> Optional[str]:
+    """
+    Check if assigning product to category would cause slug collision.
+    Returns the conflicting slug if any, else None.
+    """
+    result = await db.execute(
+        select(ProductColor.slug).where(ProductColor.product_id == product_id)
+    )
+    slugs = result.scalars().all()
+    
+    if not slugs:
+        return None
+        
+    query = (
+        select(ProductColor.slug)
+        .join(Product, ProductColor.product_id == Product.id)
+        .join(ProductCategory, ProductCategory.product_id == Product.id)
+        .where(
+            ProductCategory.category_id == category_id,
+            ProductColor.slug.in_(slugs),
+            Product.id != product_id
+        )
+    )
+    
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
 async def add_product_to_category(db: AsyncSession, product_id: int, category_id: int) -> bool:
     # check duplicates
     exists = await db.execute(

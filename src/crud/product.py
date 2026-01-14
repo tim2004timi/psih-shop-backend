@@ -134,6 +134,52 @@ async def check_slug_exists(db: AsyncSession, slug: str, exclude_id: Optional[in
     result = await db.execute(query)
     return result.scalar_one_or_none() is not None
 
+async def check_slug_collision(db: AsyncSession, slug: str, product_id: int, exclude_color_id: Optional[int] = None) -> bool:
+    """
+    Check if slug conflicts with other products in the same categories.
+    Returns True if collision exists.
+    """
+    result = await db.execute(
+        select(ProductCategory.category_id).where(ProductCategory.product_id == product_id)
+    )
+    category_ids = result.scalars().all()
+    
+    if not category_ids:
+        return False
+        
+    query = (
+        select(ProductColor)
+        .join(Product, ProductColor.product_id == Product.id)
+        .join(ProductCategory, ProductCategory.product_id == Product.id)
+        .where(
+            ProductColor.slug == slug,
+            ProductCategory.category_id.in_(category_ids),
+            Product.id != product_id 
+        )
+    )
+    
+    if exclude_color_id:
+        query = query.where(ProductColor.id != exclude_color_id)
+    
+    result = await db.execute(query)
+    return result.first() is not None
+
+async def get_product_by_category_and_slug(db: AsyncSession, category_slug: str, product_slug: str) -> Optional[ProductColor]:
+    """Get product by category slug and product slug"""
+    query = (
+        select(ProductColor)
+        .join(Product, ProductColor.product_id == Product.id)
+        .join(ProductCategory, ProductCategory.product_id == Product.id)
+        .join(Category, ProductCategory.category_id == Category.id)
+        .where(
+            Category.slug == category_slug,
+            ProductColor.slug == product_slug
+        )
+    )
+    result = await db.execute(query)
+    
+    return result.scalar_one_or_none()
+
 # --- ProductColor CRUD ---
 async def get_product_color_by_id(db: AsyncSession, color_id: int) -> Optional[ProductColor]:
     """Получить цвет продукта по ID"""

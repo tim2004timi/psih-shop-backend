@@ -85,6 +85,14 @@ async def create_tables():
                 logger.info("Weight column updated to be nullable and default values set")
             except Exception as e:
                 logger.warning(f"Weight column update issue: {e}")
+
+            try:
+                await conn.execute(text("ALTER TABLE product_colors DROP CONSTRAINT IF EXISTS product_colors_slug_key;"))
+                await conn.execute(text("DROP INDEX IF EXISTS ix_product_colors_slug;"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_product_colors_slug ON product_colors (slug);"))
+                logger.info("Unique constraint removed from product_colors.slug")
+            except Exception as e:
+                logger.warning(f"Error removing unique constraint from product_colors.slug: {e}")
     except Exception as e:
         logger.error(f"General migration error: {e}")
 

@@ -112,6 +112,65 @@ async def get_products(
         limit=limit
     )
 
+@router.get("/{category_slug}/{slug}", 
+    response_model=ProductPublic,
+    summary="Получить продукт по категории и slug",
+    description="Получает информацию о продукте по его slug и категории")
+async def get_product_by_category_and_slug(
+    category_slug: str,
+    slug: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получить продукт по slug и категории"""
+    product_color = await crud.get_product_by_category_and_slug(db, category_slug, slug)
+    if not product_color:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+    
+    product = await crud.get_product_by_id(db, product_color.product_id)
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+    
+    sizes_map = await crud.get_sizes_for_products(db, [product_color.id])
+    images = await crud.list_product_images(db, product_color.id)
+    main_category = await crud.get_product_main_category(db, product.id)
+    sections = await crud.list_product_sections(db, product.id)
+    
+    # Конвертируем секции
+    validated_sections = []
+    if hasattr(ProductSectionOut, "model_validate"):
+         validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
+    else:
+         validated_sections = [ProductSectionOut.from_orm(s) for s in sections]
+    
+    return ProductPublic(
+        id=product.id,
+        color_id=product_color.id,
+        slug=product_color.slug,
+        title=product_color.title,
+        categoryPath=[category_slug],
+        main_category=main_category,
+        price=product.price,
+        discount_price=product.discount_price,
+        currency=product.currency,
+        weight=product.weight,
+        label=product_color.label,
+        hex=product_color.hex,
+        sizes=sizes_map.get(product_color.id, []),
+        composition=product.composition,
+        fit=product.fit,
+        description=product.description,
+        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
+        meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
+        status=product.status,
+        custom_sections=validated_sections
+    )
+
 @router.get("/slug/{slug}", 
     response_model=ProductPublic,
     summary="Получить продукт по slug",
@@ -254,11 +313,10 @@ async def add_color(
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     
-    # Проверяем slug
-    if await crud.check_slug_exists(db, color.slug):
+    if await crud.check_slug_collision(db, color.slug, product_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Product with this slug already exists"
+            detail="Product with this slug already exists in the same category"
         )
     
     created = await crud.create_product_color(
@@ -280,21 +338,22 @@ async def update_color(
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     
+    current_color = await crud.get_product_color_by_id(db, color_id)
+    if not current_color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Color not found")
+
     # Если название изменилось, а slug не передан - генерируем slug автоматически
     # (по просьбе пользователя, чтобы slug менялся при изменении названия)
     if color_update.title and not color_update.slug:
         color_update.slug = slugify(color_update.title)
     
-    # Проверяем slug, если он обновляется (передан явно или сгенерирован)
     if color_update.slug:
-        if await crud.check_slug_exists(db, color_update.slug, exclude_id=color_id):
-            # Если сгенерированный slug занят, попробуем добавить ID для уникальности
+        if await crud.check_slug_collision(db, color_update.slug, current_color.product_id, exclude_color_id=color_id):
             color_update.slug = f"{color_update.slug}-{color_id}"
-            # Проверяем еще раз на всякий случай
-            if await crud.check_slug_exists(db, color_update.slug, exclude_id=color_id):
+            if await crud.check_slug_collision(db, color_update.slug, current_color.product_id, exclude_color_id=color_id):
                  raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Product with this slug already exists even with suffix"
+                    detail="Product with this slug already exists in the same category even with suffix"
                 )
     
     updated = await crud.update_product_color(db, color_id, color_update)
@@ -591,6 +650,14 @@ async def set_product_categories(
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     
+    for cat_id in category_ids:
+        conflicting_slug = await crud.check_category_assignment_collision(db, product_id, cat_id)
+        if conflicting_slug:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Slug '{conflicting_slug}' already exists in category {cat_id}"
+            )
+
     await crud.set_product_categories(db, product_id, category_ids)
     return
 

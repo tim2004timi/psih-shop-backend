@@ -42,7 +42,7 @@ class ProductColor(Base):
     __tablename__ = "product_colors"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    slug = Column(String(100), unique=True, index=True, nullable=False)  # slug продукта с цветом
+    slug = Column(String(100), index=True, nullable=False)  # slug продукта с цветом
     title = Column(String(200), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
     label = Column(String(100), nullable=False)  # название цвета
