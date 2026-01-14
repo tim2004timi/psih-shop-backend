@@ -19,7 +19,7 @@ async def get_product_by_id(db: AsyncSession, product_id: int) -> Optional[Produ
 async def get_product_by_slug(db: AsyncSession, slug: str) -> Optional[ProductColor]:
     """Получить продукт по slug (теперь ищем в ProductColor)"""
     result = await db.execute(select(ProductColor).where(ProductColor.slug == slug))
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 async def get_products(
     db: AsyncSession, 
@@ -132,7 +132,7 @@ async def check_slug_exists(db: AsyncSession, slug: str, exclude_id: Optional[in
         query = query.where(ProductColor.id != exclude_id)
     
     result = await db.execute(query)
-    return result.scalar_one_or_none() is not None
+    return result.scalars().first() is not None
 
 async def check_slug_collision(db: AsyncSession, slug: str, product_id: int, exclude_color_id: Optional[int] = None) -> bool:
     """
