@@ -323,13 +323,24 @@ async def add_color(
             detail="Product with this slug already exists in the same category"
         )
     
-    created = await crud.create_product_color(
-        db, product_id, 
-        slug=color.slug, 
-        title=color.title, 
-        label=color.label, 
-        hex=color.hex
-    )
+    try:
+        created = await crud.create_product_color(
+            db, product_id, 
+            slug=color.slug, 
+            title=color.title, 
+            label=color.label, 
+            hex=color.hex
+        )
+    except Exception as e:
+        logger.error(f"Error creating product color: {e}")
+        # Если это IntegrityError, скорее всего, проблема с уникальностью slug (миграция не прошла)
+        if "unique constraint" in str(e).lower() or "integrity" in str(e).lower():
+             raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database integrity error. Likely a duplicate slug. Please ensure database migrations are applied."
+            )
+        raise e
+
     return {"id": created.id, "slug": created.slug, "title": created.title, "label": created.label, "hex": created.hex}
 
 @router.put("/colors/{color_id}", summary="Обновить цвет", status_code=200)

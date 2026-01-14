@@ -87,10 +87,28 @@ async def create_tables():
                 logger.warning(f"Weight column update issue: {e}")
 
             try:
-                await conn.execute(text("ALTER TABLE product_colors DROP CONSTRAINT IF EXISTS product_colors_slug_key;"))
+                # Находим имя уникального констрейнта для slug, если он есть
+                constraint_query = text("""
+                    SELECT conname
+                    FROM pg_constraint
+                    WHERE conrelid = 'product_colors'::regclass
+                    AND contype = 'u'
+                    AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = 'product_colors'::regclass AND attname = 'slug')];
+                """)
+                result = await conn.execute(constraint_query)
+                constraint_name = result.scalar_one_or_none()
+
+                if constraint_name:
+                    await conn.execute(text(f"ALTER TABLE product_colors DROP CONSTRAINT {constraint_name};"))
+                    logger.info(f"Dropped unique constraint: {constraint_name}")
+                
+                # Удаляем индекс, если он есть (иногда индекс и констрейнт имеют разные имена)
                 await conn.execute(text("DROP INDEX IF EXISTS ix_product_colors_slug;"))
+                await conn.execute(text("DROP INDEX IF EXISTS product_colors_slug_key;"))
+                
+                # Создаем обычный индекс
                 await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_product_colors_slug ON product_colors (slug);"))
-                logger.info("Unique constraint removed from product_colors.slug")
+                logger.info("Unique constraint removed and normal index created for product_colors.slug")
             except Exception as e:
                 logger.warning(f"Error removing unique constraint from product_colors.slug: {e}")
     except Exception as e:
