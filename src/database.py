@@ -87,7 +87,7 @@ async def create_tables():
                 logger.warning(f"Weight column update issue: {e}")
 
             try:
-                # Находим имя уникального констрейнта для slug, если он есть
+                # 1. Сначала пробуем найти и удалить CONSTRAINT (как раньше)
                 constraint_query = text("""
                     SELECT conname
                     FROM pg_constraint
@@ -102,11 +102,30 @@ async def create_tables():
                     await conn.execute(text(f"ALTER TABLE product_colors DROP CONSTRAINT {constraint_name};"))
                     logger.info(f"Dropped unique constraint: {constraint_name}")
                 
-                # Удаляем индекс, если он есть (иногда индекс и констрейнт имеют разные имена)
+                # 2. Теперь ищем ЛЮБОЙ уникальный индекс на поле slug, который мог остаться (даже если это не constraint)
+                index_query = text("""
+                    SELECT i.relname as index_name
+                    FROM pg_class t, pg_class i, pg_index ix, pg_attribute a
+                    WHERE t.oid = ix.indrelid
+                    AND i.oid = ix.indexrelid
+                    AND a.attrelid = t.oid
+                    AND a.attnum = ANY(ix.indkey)
+                    AND t.relname = 'product_colors'
+                    AND a.attname = 'slug'
+                    AND ix.indisunique = true;
+                """)
+                result = await conn.execute(index_query)
+                unique_indexes = result.scalars().all()
+                
+                for index_name in unique_indexes:
+                    await conn.execute(text(f"DROP INDEX IF EXISTS {index_name};"))
+                    logger.info(f"Dropped unique index: {index_name}")
+
+                # 3. Чистим стандартные имена на всякий случай
                 await conn.execute(text("DROP INDEX IF EXISTS ix_product_colors_slug;"))
                 await conn.execute(text("DROP INDEX IF EXISTS product_colors_slug_key;"))
                 
-                # Создаем обычный индекс
+                # 4. Создаем обычный (неуникальный) индекс
                 await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_product_colors_slug ON product_colors (slug);"))
                 logger.info("Unique constraint removed and normal index created for product_colors.slug")
             except Exception as e:
