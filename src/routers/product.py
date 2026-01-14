@@ -22,6 +22,45 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
+from src.database import create_tables
+
+@router.get("/fix-db-slugs", summary="Принудительная миграция БД", include_in_schema=False)
+async def fix_db_slugs(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Временный эндпоинт для принудительного удаления уникального констрейнта.
+    """
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    try:
+        from sqlalchemy import text
+        # Находим имя уникального констрейнта для slug
+        constraint_query = text("""
+            SELECT conname
+            FROM pg_constraint
+            WHERE conrelid = 'product_colors'::regclass
+            AND contype = 'u'
+            AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = 'product_colors'::regclass AND attname = 'slug')];
+        """)
+        result = await db.execute(constraint_query)
+        constraint_name = result.scalar_one_or_none()
+
+        if constraint_name:
+            await db.execute(text(f"ALTER TABLE product_colors DROP CONSTRAINT {constraint_name};"))
+            logger.info(f"Dropped unique constraint: {constraint_name}")
+        
+        await db.execute(text("DROP INDEX IF EXISTS ix_product_colors_slug;"))
+        await db.execute(text("DROP INDEX IF EXISTS product_colors_slug_key;"))
+        await db.execute(text("CREATE INDEX IF NOT EXISTS ix_product_colors_slug ON product_colors (slug);"))
+        await db.commit()
+        return {"message": "Migration completed successfully. Unique constraint removed."}
+    except Exception as e:
+        logger.error(f"Migration failed: {e}")
+        return {"error": str(e)}
+
 @router.get("", 
     response_model=ProductList,
     summary="Получить список продуктов",
