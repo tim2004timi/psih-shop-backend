@@ -112,65 +112,6 @@ async def get_products(
         limit=limit
     )
 
-@router.get("/{category_slug}/{slug}", 
-    response_model=ProductPublic,
-    summary="Получить продукт по категории и slug",
-    description="Получает информацию о продукте по его slug и категории")
-async def get_product_by_category_and_slug(
-    category_slug: str,
-    slug: str,
-    db: AsyncSession = Depends(get_db)
-):
-    """Получить продукт по slug и категории"""
-    product_color = await crud.get_product_by_category_and_slug(db, category_slug, slug)
-    if not product_color:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found"
-        )
-    
-    product = await crud.get_product_by_id(db, product_color.product_id)
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found"
-        )
-    
-    sizes_map = await crud.get_sizes_for_products(db, [product_color.id])
-    images = await crud.list_product_images(db, product_color.id)
-    main_category = await crud.get_product_main_category(db, product.id)
-    sections = await crud.list_product_sections(db, product.id)
-    
-    # Конвертируем секции
-    validated_sections = []
-    if hasattr(ProductSectionOut, "model_validate"):
-         validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
-    else:
-         validated_sections = [ProductSectionOut.from_orm(s) for s in sections]
-    
-    return ProductPublic(
-        id=product.id,
-        color_id=product_color.id,
-        slug=product_color.slug,
-        title=product_color.title,
-        categoryPath=[category_slug],
-        main_category=main_category,
-        price=product.price,
-        discount_price=product.discount_price,
-        currency=product.currency,
-        weight=product.weight,
-        label=product_color.label,
-        hex=product_color.hex,
-        sizes=sizes_map.get(product_color.id, []),
-        composition=product.composition,
-        fit=product.fit,
-        description=product.description,
-        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
-        meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-        status=product.status,
-        custom_sections=validated_sections
-    )
-
 @router.get("/slug/{slug}", 
     response_model=ProductPublic,
     summary="Получить продукт по slug",
@@ -208,6 +149,69 @@ async def get_product_by_slug(
         slug=product_color.slug,
         title=product_color.title,
         categoryPath=[],
+        main_category=main_category,
+        price=product.price,
+        discount_price=product.discount_price,
+        currency=product.currency,
+        weight=product.weight,
+        label=product_color.label,
+        hex=product_color.hex,
+        sizes=sizes_map.get(product_color.id, []),
+        composition=product.composition,
+        fit=product.fit,
+        description=product.description,
+        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
+        meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
+        status=product.status,
+        custom_sections=validated_sections
+    )
+
+@router.get("/{category_slug}/{slug}", 
+    response_model=ProductPublic,
+    summary="Получить продукт по категории и slug",
+    description="Получает информацию о продукте по его slug и категории")
+async def get_product_by_category_and_slug(
+    category_slug: str,
+    slug: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получить продукт по slug и категории"""
+    # Если category_slug == 'slug', значит это запрос к get_product_by_slug, который не сматчился из-за порядка
+    # Но так как мы меняем порядок, это может не понадобиться. 
+    # Однако, стоит добавить проверку, чтобы не перехватывать системные пути, если они вдруг попадут сюда.
+    
+    product_color = await crud.get_product_by_category_and_slug(db, category_slug, slug)
+    if not product_color:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+    
+    product = await crud.get_product_by_id(db, product_color.product_id)
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+    
+    sizes_map = await crud.get_sizes_for_products(db, [product_color.id])
+    images = await crud.list_product_images(db, product_color.id)
+    main_category = await crud.get_product_main_category(db, product.id)
+    sections = await crud.list_product_sections(db, product.id)
+    
+    # Конвертируем секции
+    validated_sections = []
+    if hasattr(ProductSectionOut, "model_validate"):
+         validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
+    else:
+         validated_sections = [ProductSectionOut.from_orm(s) for s in sections]
+    
+    return ProductPublic(
+        id=product.id,
+        color_id=product_color.id,
+        slug=product_color.slug,
+        title=product_color.title,
+        categoryPath=[category_slug],
         main_category=main_category,
         price=product.price,
         discount_price=product.discount_price,

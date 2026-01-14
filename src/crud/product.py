@@ -178,7 +178,7 @@ async def get_product_by_category_and_slug(db: AsyncSession, category_slug: str,
     )
     result = await db.execute(query)
     
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 # --- ProductColor CRUD ---
 async def get_product_color_by_id(db: AsyncSession, color_id: int) -> Optional[ProductColor]:
