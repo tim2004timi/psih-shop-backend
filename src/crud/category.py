@@ -51,9 +51,7 @@ async def get_products_by_category_slug(db: AsyncSession, slug: str) -> List[Pro
     if not cat:
         return []
 
-    categories_result = await db.execute(
-        select(Category.id, Category.parent_id).where(Category.is_active == True)
-    )
+    categories_result = await db.execute(select(Category.id, Category.parent_id))
     rows = categories_result.all()
     children: Dict[int, List[int]] = {}
     for cid, parent_id in rows:
