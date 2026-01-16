@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Set
 from src.models.category import Category, ProductCategory
 from src.models.product import Product, ProductColor
 
@@ -50,11 +50,31 @@ async def get_products_by_category_slug(db: AsyncSession, slug: str) -> List[Pro
     cat = await get_category_by_slug(db, slug)
     if not cat:
         return []
+
+    categories_result = await db.execute(
+        select(Category.id, Category.parent_id).where(Category.is_active == True)
+    )
+    rows = categories_result.all()
+    children: Dict[int, List[int]] = {}
+    for cid, parent_id in rows:
+        if parent_id is None:
+            continue
+        children.setdefault(parent_id, []).append(cid)
+
+    category_ids: Set[int] = set()
+    stack = [cat.id]
+    while stack:
+        current = stack.pop()
+        if current in category_ids:
+            continue
+        category_ids.add(current)
+        stack.extend(children.get(current, []))
+
     result = await db.execute(
         select(ProductColor)
         .join(Product, ProductColor.product_id == Product.id)
         .join(ProductCategory, ProductCategory.product_id == Product.id)
-        .where(ProductCategory.category_id == cat.id)
+        .where(ProductCategory.category_id.in_(list(category_ids)))
         .order_by(ProductCategory.sort_order)
     )
     return result.scalars().all()
