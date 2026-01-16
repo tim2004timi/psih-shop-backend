@@ -162,7 +162,7 @@ async def check_slug_collision(db: AsyncSession, slug: str, product_id: int, exc
         query = query.where(ProductColor.id != exclude_color_id)
     
     result = await db.execute(query)
-    return result.first() is not None
+    return result.scalars().first() is not None
 
 async def get_product_by_category_and_slug(db: AsyncSession, category_slug: str, product_slug: str) -> Optional[ProductColor]:
     """Get product by category slug and product slug"""
