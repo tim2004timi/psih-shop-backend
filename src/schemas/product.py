@@ -111,7 +111,8 @@ class MainCategory(BaseModel):
     slug: str
 
 class ProductPublic(BaseModel):
-    id: int  # ID базового продукта
+    id: int  # ID цветовой вариации (ProductColor)
+    product_id: int  # ID базового продукта (Product)
     color_id: int  # ID цвета продукта
     slug: str
     title: str
