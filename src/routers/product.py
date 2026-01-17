@@ -74,14 +74,13 @@ async def get_products(
 
             # Формируем мета-данные
             meta_data = ProductMeta(
-                care=getattr(product, 'meta_care', None), 
-                shipping=getattr(product, 'meta_shipping', None), 
-                returns=getattr(product, 'meta_returns', None)
+                care=getattr(product, "meta_care", None),
+                shipping=getattr(product, "meta_shipping", None),
+                returns=getattr(product, "meta_returns", None),
             )
                 
             public_products.append(ProductPublic(
-                id=pc.id,
-                product_id=product.id,
+                id=product.id,
                 color_id=pc.id,
                 slug=pc.slug,
                 title=pc.title,
@@ -89,17 +88,17 @@ async def get_products(
                 main_category=main_categories_map.get(product.id),
                 price=product.price,
                 discount_price=product.discount_price,
-                currency=product.currency,
+                currency=product.currency or "RUB",
                 weight=product.weight,
-                label=pc.label,
-                hex=pc.hex,
+                label=pc.label or "Default",
+                hex=pc.hex or "#000000",
                 sizes=sizes_map.get(pc.id, []),
                 composition=product.composition,
                 fit=product.fit,
                 description=product.description,
                 images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
                 meta=meta_data,
-                status=product.status,
+                status=product.status or ProductStatus.IN_STOCK,
                 custom_sections=validated_sections
             ))
         except Exception as e:
@@ -153,17 +152,17 @@ async def get_product_by_slug(
         main_category=main_category,
         price=product.price,
         discount_price=product.discount_price,
-        currency=product.currency,
+        currency=product.currency or "RUB",
         weight=product.weight,
-        label=product_color.label,
-        hex=product_color.hex,
+        label=product_color.label or "Default",
+        hex=product_color.hex or "#000000",
         sizes=sizes_map.get(product_color.id, []),
         composition=product.composition,
         fit=product.fit,
         description=product.description,
         images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
         meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-        status=product.status,
+        status=product.status or ProductStatus.IN_STOCK,
         custom_sections=validated_sections
     )
 
@@ -786,16 +785,16 @@ async def get_product_by_category_and_slug(
         main_category=main_category,
         price=product.price,
         discount_price=product.discount_price,
-        currency=product.currency,
+        currency=product.currency or "RUB",
         weight=product.weight,
-        label=product_color.label,
-        hex=product_color.hex,
+        label=product_color.label or "Default",
+        hex=product_color.hex or "#000000",
         sizes=sizes_map.get(product_color.id, []),
         composition=product.composition,
         fit=product.fit,
         description=product.description,
         images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
         meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-        status=product.status,
+        status=product.status or ProductStatus.IN_STOCK,
         custom_sections=validated_sections
     )
