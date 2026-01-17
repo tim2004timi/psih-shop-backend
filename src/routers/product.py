@@ -80,7 +80,8 @@ async def get_products(
             )
                 
             public_products.append(ProductPublic(
-                id=product.id,
+                id=pc.id,
+                product_id=product.id,
                 color_id=pc.id,
                 slug=pc.slug,
                 title=pc.title,
@@ -144,7 +145,8 @@ async def get_product_by_slug(
     validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
     
     return ProductPublic(
-        id=product.id,
+        id=product_color.id,
+        product_id=product.id,
         color_id=product_color.id,
         slug=product_color.slug,
         title=product_color.title,
@@ -777,7 +779,8 @@ async def get_product_by_category_and_slug(
         validated_sections = [ProductSectionOut.from_orm(s) for s in sections]
     
     return ProductPublic(
-        id=product.id,
+        id=product_color.id,
+        product_id=product.id,
         color_id=product_color.id,
         slug=product_color.slug,
         title=product_color.title,

@@ -63,7 +63,8 @@ async def products_by_category(slug: str, db: AsyncSession = Depends(get_db)):
 
             result.append(
                 ProductPublic(
-                    id=product.id,
+                    id=pc.id,
+                    product_id=product.id,
                     color_id=pc.id,
                     slug=pc.slug,
                     title=pc.title,
@@ -73,8 +74,8 @@ async def products_by_category(slug: str, db: AsyncSession = Depends(get_db)):
                     discount_price=product.discount_price,
                     currency=product.currency or "RUB",
                     weight=product.weight,
-                    label=pc.label,
-                    hex=pc.hex,
+                    label=pc.label or "Default",
+                    hex=pc.hex or "#000000",
                     sizes=sizes_map.get(pc.id, []),
                     composition=product.composition,
                     fit=product.fit,

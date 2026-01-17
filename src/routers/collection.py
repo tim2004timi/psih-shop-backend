@@ -122,7 +122,8 @@ async def get_collection_products(
             continue
         
         public_products.append(ProductPublic(
-            id=product.id,
+            id=pc.id,
+            product_id=product.id,
             color_id=pc.id,
             slug=pc.slug,
             title=pc.title,
@@ -130,17 +131,17 @@ async def get_collection_products(
             main_category=main_categories_map.get(product.id),
             price=product.price,
             discount_price=product.discount_price,
-            currency=product.currency,
+            currency=product.currency or "RUB",
             weight=product.weight,
-            label=pc.label,
-            hex=pc.hex,
+            label=pc.label or "Default",
+            hex=pc.hex or "#000000",
             sizes=sizes_map.get(pc.id, []),
             composition=product.composition,
             fit=product.fit,
             description=product.description,
             images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
             meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-            status=product.status,
+            status=product.status or ProductStatus.IN_STOCK,
         ))
     return public_products
 
