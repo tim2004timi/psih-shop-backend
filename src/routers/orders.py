@@ -203,4 +203,3 @@ async def test_add_order_to_cdek(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to add order to CDEK: {str(e)}"
         )
-
