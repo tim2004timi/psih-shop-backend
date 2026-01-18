@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import NullPool
 from src.config import settings
 from sqlalchemy import text
 import logging
@@ -22,7 +21,10 @@ SQLALCHEMY_DATABASE_URL = settings.get_async_database_url()
 engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL,
     echo=False,  # Логирование SQL запросов (отключите в production)
-    poolclass=NullPool,  # Для избежания проблем с пулом соединений
+    pool_size=5,  # Минимальное количество соединений в пуле
+    max_overflow=10,  # Максимальное количество дополнительных соединений
+    pool_timeout=30,  # Тайм-аут ожидания свободного соединения
+    pool_recycle=3600,  # Пересоздавать соединения каждый час
     future=True,  # Для поддержки SQLAlchemy 2.0
 )
 
@@ -64,13 +66,74 @@ async def create_tables():
 
     try:
         async with engine.begin() as conn:
-            await conn.execute(text("ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
-            await conn.execute(text("ALTER TABLE product_sizes ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
-            logger.info("Column sort_order added/verified in product_categories and product_sizes")
-    except Exception as e:
-        logger.warning(f"Could not add sort_order column: {e}")
+            # Пытаемся добавить колонки по одной с индивидуальной обработкой
+            try:
+                await conn.execute(text("ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
+                logger.info("Column sort_order verified in product_categories")
+            except Exception as e:
+                logger.error(f"Error adding sort_order to product_categories: {e}")
+            try:
+                await conn.execute(text("ALTER TABLE product_sizes ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;"))
+                logger.info("Column sort_order verified in product_sizes")
+            except Exception as e:
+                logger.error(f"Error adding sort_order to product_sizes: {e}")
+            
+            try:
+                # Разрешаем NULL для weight и проставляем дефолты
+                await conn.execute(text("ALTER TABLE products ALTER COLUMN weight DROP NOT NULL;"))
+                await conn.execute(text("UPDATE products SET weight = 0.1 WHERE weight IS NULL OR weight <= 0;"))
+                logger.info("Weight column updated to be nullable and default values set")
+            except Exception as e:
+                logger.warning(f"Weight column update issue: {e}")
 
-# Функция для удаления таблиц (для тестов)
+            try:
+                await conn.execute(text("""
+                    DO $$
+                    DECLARE r record;
+                    BEGIN
+                        FOR r IN
+                            SELECT c.conname AS name
+                            FROM pg_constraint c
+                            JOIN pg_class t ON t.oid = c.conrelid
+                            WHERE t.relname = 'product_colors'
+                              AND c.contype = 'u'
+                              AND array_length(c.conkey, 1) = 1
+                              AND (
+                                SELECT a.attname
+                                FROM pg_attribute a
+                                WHERE a.attrelid = t.oid AND a.attnum = c.conkey[1]
+                              ) = 'slug'
+                        LOOP
+                            EXECUTE format('ALTER TABLE %I DROP CONSTRAINT IF EXISTS %I', 'product_colors', r.name);
+                        END LOOP;
+
+                        FOR r IN
+                            SELECT i.relname AS name
+                            FROM pg_class t
+                            JOIN pg_index ix ON t.oid = ix.indrelid
+                            JOIN pg_class i ON i.oid = ix.indexrelid
+                            WHERE t.relname = 'product_colors'
+                              AND ix.indisunique = true
+                              AND array_length(ix.indkey::smallint[], 1) = 1
+                              AND (
+                                SELECT a.attname
+                                FROM pg_attribute a
+                                WHERE a.attrelid = t.oid AND a.attnum = (ix.indkey::smallint[])[1]
+                              ) = 'slug'
+                        LOOP
+                            EXECUTE format('DROP INDEX IF EXISTS %I', r.name);
+                        END LOOP;
+                    END $$;
+                """))
+
+                await conn.execute(text("DROP INDEX IF EXISTS ix_product_colors_slug;"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_product_colors_slug ON product_colors (slug);"))
+                logger.info("product_colors.slug index verified")
+            except Exception as e:
+                logger.warning(f"Error removing unique constraint from product_colors.slug: {e}")
+    except Exception as e:
+        logger.error(f"General migration error: {e}")
+
 async def drop_tables():
     """
     Удаляет все таблицы из базы данных.
@@ -79,7 +142,6 @@ async def drop_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
-# Функция для проверки подключения к БД
 async def check_db_connection():
     """
     Проверяет подключение к базе данных.

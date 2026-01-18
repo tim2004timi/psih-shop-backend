@@ -1,8 +1,12 @@
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.models.product import Product, ProductColor, ProductSize, ProductImage
+from src.models.product import Product, ProductColor, ProductSize, ProductImage, ProductSection
 from src.models.category import Category, ProductCategory
-from src.schemas.product import ProductCreate, ProductUpdate, ProductColorCreate, ProductColorUpdate
+from src.schemas.product import (
+    ProductCreate, ProductUpdate, ProductColorCreate, ProductColorUpdate,
+    ProductSectionCreate, ProductSectionUpdate
+)
+from src.utils import delete_image_from_minio
 from typing import List, Optional
 from collections import defaultdict
 
@@ -15,7 +19,7 @@ async def get_product_by_id(db: AsyncSession, product_id: int) -> Optional[Produ
 async def get_product_by_slug(db: AsyncSession, slug: str) -> Optional[ProductColor]:
     """Получить продукт по slug (теперь ищем в ProductColor)"""
     result = await db.execute(select(ProductColor).where(ProductColor.slug == slug))
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 async def get_products(
     db: AsyncSession, 
@@ -100,12 +104,24 @@ async def update_product(db: AsyncSession, product_id: int, update_data: Product
     return product
 
 async def delete_product(db: AsyncSession, product_id: int) -> bool:
-    """Удалить продукт"""
+    """Удалить продукт со всеми цветами и изображениями"""
     product = await db.get(Product, product_id)
     if not product:
         return False
     
-    db.delete(product)
+    # Получаем все цвета продукта
+    result = await db.execute(select(ProductColor).where(ProductColor.product_id == product_id))
+    colors = result.scalars().all()
+    
+    for color in colors:
+        # Для каждого цвета удаляем его изображения из хранилища
+        img_result = await db.execute(select(ProductImage).where(ProductImage.product_color_id == color.id))
+        images = img_result.scalars().all()
+        for img in images:
+            if img.file:
+                await delete_image_from_minio(img.file)
+    
+    await db.delete(product)
     await db.commit()
     return True
 
@@ -116,7 +132,53 @@ async def check_slug_exists(db: AsyncSession, slug: str, exclude_id: Optional[in
         query = query.where(ProductColor.id != exclude_id)
     
     result = await db.execute(query)
-    return result.scalar_one_or_none() is not None
+    return result.scalars().first() is not None
+
+async def check_slug_collision(db: AsyncSession, slug: str, product_id: int, exclude_color_id: Optional[int] = None) -> bool:
+    """
+    Check if slug conflicts with other products in the same categories.
+    Returns True if collision exists.
+    """
+    result = await db.execute(
+        select(ProductCategory.category_id).where(ProductCategory.product_id == product_id)
+    )
+    category_ids = result.scalars().all()
+    
+    if not category_ids:
+        return False
+        
+    query = (
+        select(ProductColor)
+        .join(Product, ProductColor.product_id == Product.id)
+        .join(ProductCategory, ProductCategory.product_id == Product.id)
+        .where(
+            ProductColor.slug == slug,
+            ProductCategory.category_id.in_(category_ids),
+            Product.id != product_id 
+        )
+    )
+    
+    if exclude_color_id:
+        query = query.where(ProductColor.id != exclude_color_id)
+    
+    result = await db.execute(query)
+    return result.scalars().first() is not None
+
+async def get_product_by_category_and_slug(db: AsyncSession, category_slug: str, product_slug: str) -> Optional[ProductColor]:
+    """Get product by category slug and product slug"""
+    query = (
+        select(ProductColor)
+        .join(Product, ProductColor.product_id == Product.id)
+        .join(ProductCategory, ProductCategory.product_id == Product.id)
+        .join(Category, ProductCategory.category_id == Category.id)
+        .where(
+            Category.slug == category_slug,
+            ProductColor.slug == product_slug
+        )
+    )
+    result = await db.execute(query)
+    
+    return result.scalars().first()
 
 # --- ProductColor CRUD ---
 async def get_product_color_by_id(db: AsyncSession, color_id: int) -> Optional[ProductColor]:
@@ -152,22 +214,29 @@ async def update_product_color(db: AsyncSession, color_id: int, update_data: Pro
     return color
 
 async def delete_product_color(db: AsyncSession, color_id: int) -> bool:
-    """Удалить цвет продукта"""
+    """Удалить цвет продукта и его изображения"""
     color = await db.get(ProductColor, color_id)
     if not color:
         return False
     
-    db.delete(color)
+    # Удаляем изображения из хранилища
+    img_result = await db.execute(select(ProductImage).where(ProductImage.product_color_id == color.id))
+    images = img_result.scalars().all()
+    for img in images:
+        if img.file:
+            await delete_image_from_minio(img.file)
+            
+    await db.delete(color)
     await db.commit()
     return True
 
 # --- ProductImage CRUD ---
 async def list_product_images(db: AsyncSession, product_color_id: int) -> List[ProductImage]:
-    """Получить список изображений продукта по цвету"""
+    """Получить список изображений продукта по цвету (главное фото всегда первое)"""
     result = await db.execute(
         select(ProductImage)
         .where(ProductImage.product_color_id == product_color_id)
-        .order_by(ProductImage.sort_order)
+        .order_by(ProductImage.sort_order.desc(), ProductImage.id.asc())
     )
     return result.scalars().all()
 
@@ -184,7 +253,12 @@ async def delete_product_image(db: AsyncSession, image_id: int) -> bool:
     img = await db.get(ProductImage, image_id)
     if not img:
         return False
-    db.delete(img)
+    
+    # Сначала удаляем файл из хранилища
+    if img.file:
+        await delete_image_from_minio(img.file)
+    
+    await db.delete(img)
     await db.commit()
     return True
 
@@ -212,18 +286,20 @@ async def delete_primary_image(db: AsyncSession, product_color_id: int) -> bool:
     if not images:
         return False
     for img in images:
-        db.delete(img)
+        if img.file:
+            await delete_image_from_minio(img.file)
+        await db.delete(img)
     await db.commit()
     return True
 
 async def get_images_for_products(db: AsyncSession, product_color_ids: List[int]) -> dict[int, list[ProductImage]]:
-    """Загрузить изображения для набора продуктов и сгруппировать по product_color_id"""
+    """Загрузить изображения для набора продуктов и сгруппировать по product_color_id (главное фото первое)"""
     if not product_color_ids:
         return {}
     result = await db.execute(
         select(ProductImage)
         .where(ProductImage.product_color_id.in_(product_color_ids))
-        .order_by(ProductImage.sort_order)
+        .order_by(ProductImage.sort_order.desc(), ProductImage.id.asc())
     )
     grouped: dict[int, list[ProductImage]] = defaultdict(list)
     for image in result.scalars().all():
@@ -357,3 +433,79 @@ async def reorder_product_sizes(db: AsyncSession, product_color_id: int, size_id
             
     await db.commit()
     return True
+
+
+# --- ProductSection CRUD ---
+async def list_product_sections(db: AsyncSession, product_id: int) -> List[ProductSection]:
+    """Получить список аккордеонов продукта"""
+    result = await db.execute(
+        select(ProductSection)
+        .where(ProductSection.product_id == product_id)
+        .order_by(ProductSection.sort_order)
+    )
+    return result.scalars().all()
+
+async def create_product_section(db: AsyncSession, product_id: int, section_in: ProductSectionCreate) -> ProductSection:
+    """Создать новый аккордеон"""
+    db_section = ProductSection(
+        product_id=product_id,
+        title=section_in.title,
+        content=section_in.content,
+        sort_order=section_in.sort_order
+    )
+    db.add(db_section)
+    await db.commit()
+    await db.refresh(db_section)
+    return db_section
+
+async def update_product_section(db: AsyncSession, section_id: int, section_update: ProductSectionUpdate) -> Optional[ProductSection]:
+    """Обновить аккордеон"""
+    db_section = await db.get(ProductSection, section_id)
+    if not db_section:
+        return None
+    
+    update_data = section_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_section, field, value)
+    
+    await db.commit()
+    await db.refresh(db_section)
+    return db_section
+
+async def delete_product_section(db: AsyncSession, section_id: int) -> bool:
+    """Удалить аккордеон"""
+    db_section = await db.get(ProductSection, section_id)
+    if not db_section:
+        return False
+    
+    await db.delete(db_section)
+    await db.commit()
+    return True
+
+async def reorder_product_sections(db: AsyncSession, product_id: int, section_ids: List[int]) -> bool:
+    """Изменить порядок аккордеонов продукта"""
+    result = await db.execute(
+        select(ProductSection).where(ProductSection.product_id == product_id)
+    )
+    sections = {s.id: s for s in result.scalars().all()}
+    
+    for index, section_id in enumerate(section_ids):
+        if section_id in sections:
+            sections[section_id].sort_order = index
+            
+    await db.commit()
+    return True
+
+async def get_sections_for_products(db: AsyncSession, product_ids: List[int]) -> dict[int, list[ProductSection]]:
+    """Загрузить аккордеоны для набора продуктов и сгруппировать по product_id"""
+    if not product_ids:
+        return {}
+    result = await db.execute(
+        select(ProductSection)
+        .where(ProductSection.product_id.in_(product_ids))
+        .order_by(ProductSection.sort_order)
+    )
+    grouped: dict[int, list[ProductSection]] = defaultdict(list)
+    for section in result.scalars().all():
+        grouped[section.product_id].append(section)
+    return grouped

@@ -1,14 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+import logging
 
 from src.database import get_db
 from src.auth import get_current_user
 from src import crud
 from src.schemas.category import CategoryCreate
 from src.schemas.product import ProductPublic, ProductMeta
+from src.models.product import ProductStatus
 
 router = APIRouter(prefix="/categories", tags=["Categories"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", summary="Дерево категорий")
@@ -42,32 +45,49 @@ async def products_by_category(slug: str, db: AsyncSession = Depends(get_db)):
     
     result: List[ProductPublic] = []
     for pc in product_colors:
-        product = products_map.get(pc.product_id)
-        if not product:
-            continue
-        
-        result.append(
-            ProductPublic(
-                id=product.id,
-                color_id=pc.id,
-                slug=pc.slug,
-                title=pc.title,
-                categoryPath=[],
-                main_category=main_categories_map.get(product.id),
-                price=product.price,
-                discount_price=product.discount_price,
-                currency=product.currency,
-                label=pc.label,
-                hex=pc.hex,
-                sizes=sizes_map.get(pc.id, []),
-                composition=product.composition,
-                fit=product.fit,
-                description=product.description,
-                images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
-                meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-                status=product.status,
+        try:
+            product = products_map.get(pc.product_id)
+            if not product:
+                continue
+
+            try:
+                status_value = product.status
+            except Exception:
+                status_value = ProductStatus.IN_STOCK
+
+            meta_data = ProductMeta(
+                care=getattr(product, "meta_care", None),
+                shipping=getattr(product, "meta_shipping", None),
+                returns=getattr(product, "meta_returns", None),
             )
-        )
+
+            result.append(
+                ProductPublic(
+                    id=pc.id,
+                    product_id=product.id,
+                    color_id=pc.id,
+                    slug=pc.slug,
+                    title=pc.title,
+                    categoryPath=[],
+                    main_category=main_categories_map.get(product.id),
+                    price=product.price,
+                    discount_price=product.discount_price,
+                    currency=product.currency or "RUB",
+                    weight=product.weight,
+                    label=pc.label or "Default",
+                    hex=pc.hex or "#000000",
+                    sizes=sizes_map.get(pc.id, []),
+                    composition=product.composition,
+                    fit=product.fit,
+                    description=product.description,
+                    images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
+                    meta=meta_data,
+                    status=status_value,
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to serialize product for category={slug}, color_id={getattr(pc, 'id', None)}: {e}")
+            continue
     return result
 
 

@@ -4,6 +4,7 @@ from typing import List, Optional
 from src.models.collection import Collection, CollectionImage, CollectionProduct
 from src.models.product import Product
 from src.schemas.collection import CollectionCreate, CollectionUpdate
+from src.utils import delete_image_from_minio
 
 
 async def get_collections(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Collection]:
@@ -70,12 +71,19 @@ async def update_collection(db: AsyncSession, collection_id: int, update_data: C
 
 
 async def delete_collection(db: AsyncSession, collection_id: int) -> bool:
-    """Удалить коллекцию"""
+    """Удалить коллекцию и её изображения"""
     collection = await get_collection_by_id(db, collection_id)
     if not collection:
         return False
     
-    db.delete(collection)
+    # Удаляем изображения из хранилища
+    img_result = await db.execute(select(CollectionImage).where(CollectionImage.collection_id == collection.id))
+    images = img_result.scalars().all()
+    for img in images:
+        if img.file:
+            await delete_image_from_minio(img.file)
+            
+    await db.delete(collection)
     await db.commit()
     return True
 
@@ -105,7 +113,12 @@ async def delete_collection_image(db: AsyncSession, image_id: int) -> bool:
     img = result.scalar_one_or_none()
     if not img:
         return False
-    db.delete(img)
+    
+    # Сначала удаляем файл из хранилища
+    if img.file:
+        await delete_image_from_minio(img.file)
+        
+    await db.delete(img)
     await db.commit()
     return True
 

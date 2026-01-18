@@ -188,9 +188,11 @@ class CDEKClient:
             # Формируем ware_key: slug-color-size
             ware_key = f"{product.get('slug', '')}-{product.get('label', '').lower()}-{product.get('size', '').lower()}"
             
-            # Получаем вес товара из БД, если доступен, иначе используем значение по умолчанию
+            # Получаем вес товара из БД (в КГ), конвертируем в граммы для CDEK
             product_id = product.get("product_id")
-            item_weight = product_weights.get(product_id, 500) if product_id and product_weights else 500  # вес одного товара в граммах
+            # Если в базе 0.5 (кг), то для СДЭК это будет 0.5 * 1000 = 500 (грамм)
+            weight_kg = product_weights.get(product_id, 0.5) if product_id and product_weights else 0.5
+            item_weight_grams = int(weight_kg * 1000)
             
             item = {
                 "name": f"{product.get('title', '')} ({product.get('label', '')}, {product.get('size', '')})",
@@ -199,11 +201,11 @@ class CDEKClient:
                     "value": price_float,  # price float
                 },
                 "cost": int(price),  # price int
-                "weight": item_weight,
+                "weight": item_weight_grams,
                 "amount": product.get("quantity", 1)
             }
             items.append(item)
-            total_weight += item_weight * item["amount"]
+            total_weight += item_weight_grams * item["amount"]
         
         # Получаем данные получателя
         first_name = order_detail_dict.get("first_name", "")

@@ -3,17 +3,22 @@ from fastapi import UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+import logging
 
 from src.database import get_db
 from src.auth import get_current_user
 from src import crud
 from src.schemas.product import (
     ProductCreate, ProductUpdate, ProductList, ProductPublic, ProductMeta,
-    ProductColorIn, ProductSizeIn, ProductColorUpdate, ProductDetail, ProductColorDetail
+    ProductColorIn, ProductSizeIn, ProductColorUpdate, ProductDetail, ProductColorDetail,
+    ProductSectionCreate, ProductSectionUpdate, ProductSectionOut
 )
-from src.models.product import ProductStatus, Product, ProductColor
+from src.models.product import ProductStatus, Product, ProductColor, ProductSection
 from src.utils import upload_image_and_derivatives, slugify
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -40,39 +45,66 @@ async def get_products(
         for p in result.scalars().all():
             products_map[p.id] = p
     
-    # Получаем размеры и изображения
+    # Получаем размеры, изображения и аккордеоны
     color_ids = [pc.id for pc in product_colors]
     sizes_map = await crud.get_sizes_for_products(db, color_ids)
     images_map = await crud.get_images_for_products(db, color_ids)
     main_categories_map = await crud.get_main_categories_for_products(db, product_ids)
+    sections_map = await crud.get_sections_for_products(db, product_ids)
     
     public_products = []
     for pc in product_colors:
-        product = products_map.get(pc.product_id)
-        if not product:
+        try:
+            product = products_map.get(pc.product_id)
+            if not product:
+                continue
+                
+            # Безопасная конвертация секций
+            raw_sections = sections_map.get(product.id, [])
+            validated_sections = []
+            for s in raw_sections:
+                try:
+                    # Используем универсальный способ валидации
+                    if hasattr(ProductSectionOut, "model_validate"):
+                        validated_sections.append(ProductSectionOut.model_validate(s))
+                    else:
+                        validated_sections.append(ProductSectionOut.from_orm(s))
+                except Exception as sec_e:
+                    logger.warning(f"Error validating section for product {pc.slug}: {sec_e}")
+
+            # Формируем мета-данные
+            meta_data = ProductMeta(
+                care=getattr(product, "meta_care", None),
+                shipping=getattr(product, "meta_shipping", None),
+                returns=getattr(product, "meta_returns", None),
+            )
+                
+            public_products.append(ProductPublic(
+                id=pc.id,
+                product_id=product.id,
+                color_id=pc.id,
+                slug=pc.slug,
+                title=pc.title,
+                categoryPath=[],
+                main_category=main_categories_map.get(product.id),
+                price=product.price,
+                discount_price=product.discount_price,
+                currency=product.currency or "RUB",
+                weight=product.weight,
+                label=pc.label or "Default",
+                hex=pc.hex or "#000000",
+                sizes=sizes_map.get(pc.id, []),
+                composition=product.composition,
+                fit=product.fit,
+                description=product.description,
+                images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
+                meta=meta_data,
+                status=product.status or ProductStatus.IN_STOCK,
+                custom_sections=validated_sections
+            ))
+        except Exception as e:
+            logger.error(f"CRITICAL: Failed to validate product {getattr(pc, 'slug', 'unknown')}: {str(e)}")
             continue
-            
-        public_products.append(ProductPublic(
-            id=product.id,
-            color_id=pc.id,
-            slug=pc.slug,
-            title=pc.title,
-            categoryPath=[],
-            main_category=main_categories_map.get(product.id),
-            price=product.price,
-            discount_price=product.discount_price,
-            currency=product.currency,
-            weight=product.weight,
-            label=pc.label,
-            hex=pc.hex,
-            sizes=sizes_map.get(pc.id, []),
-            composition=product.composition,
-            fit=product.fit,
-            description=product.description,
-            images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
-            meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-            status=product.status,
-        ))
 
     return ProductList(
         products=public_products,
@@ -107,9 +139,14 @@ async def get_product_by_slug(
     sizes_map = await crud.get_sizes_for_products(db, [product_color.id])
     images = await crud.list_product_images(db, product_color.id)
     main_category = await crud.get_product_main_category(db, product.id)
+    sections = await crud.list_product_sections(db, product.id)
+    
+    # Конвертируем секции
+    validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
     
     return ProductPublic(
-        id=product.id,
+        id=product_color.id,
+        product_id=product.id,
         color_id=product_color.id,
         slug=product_color.slug,
         title=product_color.title,
@@ -117,17 +154,18 @@ async def get_product_by_slug(
         main_category=main_category,
         price=product.price,
         discount_price=product.discount_price,
-        currency=product.currency,
+        currency=product.currency or "RUB",
         weight=product.weight,
-        label=product_color.label,
-        hex=product_color.hex,
+        label=product_color.label or "Default",
+        hex=product_color.hex or "#000000",
         sizes=sizes_map.get(product_color.id, []),
         composition=product.composition,
         fit=product.fit,
         description=product.description,
         images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
         meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-        status=product.status,
+        status=product.status or ProductStatus.IN_STOCK,
+        custom_sections=validated_sections
     )
 
 # --- Product management ---
@@ -218,20 +256,32 @@ async def add_color(
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     
-    # Проверяем slug
-    if await crud.check_slug_exists(db, color.slug):
+    if await crud.check_slug_collision(db, color.slug, product_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Product with this slug already exists"
+            detail="Product with this slug already exists in the same category"
         )
     
-    created = await crud.create_product_color(
-        db, product_id, 
-        slug=color.slug, 
-        title=color.title, 
-        label=color.label, 
-        hex=color.hex
-    )
+    try:
+        created = await crud.create_product_color(
+            db, product_id, 
+            slug=color.slug, 
+            title=color.title, 
+            label=color.label, 
+            hex=color.hex
+        )
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Product with this slug already exists"
+        )
+    except Exception:
+        logger.exception("Error creating product color")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal Server Error"
+        )
+
     return {"id": created.id, "slug": created.slug, "title": created.title, "label": created.label, "hex": created.hex}
 
 @router.put("/colors/{color_id}", summary="Обновить цвет", status_code=200)
@@ -244,21 +294,22 @@ async def update_color(
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     
+    current_color = await crud.get_product_color_by_id(db, color_id)
+    if not current_color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Color not found")
+
     # Если название изменилось, а slug не передан - генерируем slug автоматически
     # (по просьбе пользователя, чтобы slug менялся при изменении названия)
     if color_update.title and not color_update.slug:
         color_update.slug = slugify(color_update.title)
     
-    # Проверяем slug, если он обновляется (передан явно или сгенерирован)
     if color_update.slug:
-        if await crud.check_slug_exists(db, color_update.slug, exclude_id=color_id):
-            # Если сгенерированный slug занят, попробуем добавить ID для уникальности
+        if await crud.check_slug_collision(db, color_update.slug, current_color.product_id, exclude_color_id=color_id):
             color_update.slug = f"{color_update.slug}-{color_id}"
-            # Проверяем еще раз на всякий случай
-            if await crud.check_slug_exists(db, color_update.slug, exclude_id=color_id):
+            if await crud.check_slug_collision(db, color_update.slug, current_color.product_id, exclude_color_id=color_id):
                  raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Product with this slug already exists even with suffix"
+                    detail="Product with this slug already exists in the same category even with suffix"
                 )
     
     updated = await crud.update_product_color(db, color_id, color_update)
@@ -266,7 +317,7 @@ async def update_color(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Color not found")
         
     return {
-        "id": updated.product_id, # Возвращаем ID базового продукта как "id" для консистентности с ProductPublic
+        "id": updated.product_id,
         "color_id": updated.id, 
         "slug": updated.slug, 
         "title": updated.title, 
@@ -424,6 +475,92 @@ async def delete_size(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Size not found")
     return
 
+# --- ProductSection management ---
+@router.get("/{product_id}/sections", 
+    response_model=List[ProductSectionOut],
+    summary="Получить все аккордеоны товара")
+async def list_sections(
+    product_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    sections = await crud.list_product_sections(db, product_id)
+    return sections
+
+@router.post("/{product_id}/sections", 
+    response_model=ProductSectionOut,
+    status_code=201,
+    summary="Добавить новый аккордеон")
+async def add_section(
+    product_id: int,
+    section: ProductSectionCreate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    # Проверяем существование продукта
+    product = await crud.get_product_by_id(db, product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        
+    created = await crud.create_product_section(db, product_id, section)
+    return created
+
+@router.put("/sections/{section_id}", 
+    response_model=ProductSectionOut,
+    summary="Обновить существующий заголовок или контент")
+async def update_section(
+    section_id: int,
+    section_update: ProductSectionUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    updated = await crud.update_product_section(db, section_id, section_update)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Section not found")
+        
+    return updated
+
+@router.delete("/sections/{section_id}", 
+    status_code=204,
+    summary="Удалить аккордеон")
+async def delete_section(
+    section_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    ok = await crud.delete_product_section(db, section_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Section not found")
+    return
+
+@router.put("/{product_id}/sections/reorder", 
+    status_code=204,
+    summary="Массовое обновление sort_order")
+async def reorder_sections(
+    product_id: int,
+    section_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    # Проверяем существование продукта
+    product = await crud.get_product_by_id(db, product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    
+    await crud.reorder_product_sections(db, product_id, section_ids)
+    return
+
 # --- Categorization management ---
 class ProductCategoryIn(BaseModel):
     category_id: int
@@ -469,6 +606,14 @@ async def set_product_categories(
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     
+    for cat_id in category_ids:
+        conflicting_slug = await crud.check_category_assignment_collision(db, product_id, cat_id)
+        if conflicting_slug:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Slug '{conflicting_slug}' already exists in category {cat_id}"
+            )
+
     await crud.set_product_categories(db, product_id, category_ids)
     return
 
@@ -530,6 +675,10 @@ async def get_product_by_id(
     # Получаем все цвета продукта
     colors = await crud.list_product_colors(db, product_id)
     main_category = await crud.get_product_main_category(db, product_id)
+    sections = await crud.list_product_sections(db, product_id)
+    
+    # Конвертируем секции
+    validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
 
     if not colors:
         # Если нет цветов, возвращаем продукт с пустым списком цветов
@@ -548,7 +697,8 @@ async def get_product_by_id(
             meta_care=product.meta_care,
             meta_shipping=product.meta_shipping,
             meta_returns=product.meta_returns,
-            colors=[]
+            colors=[],
+            custom_sections=validated_sections
         )
     
     # Получаем все ID цветов для загрузки изображений и размеров
@@ -590,5 +740,64 @@ async def get_product_by_id(
         meta_care=product.meta_care,
         meta_shipping=product.meta_shipping,
         meta_returns=product.meta_returns,
-        colors=colors_detail
+        colors=colors_detail,
+        custom_sections=validated_sections
+    )
+
+@router.get("/{category_slug}/{slug}", 
+    response_model=ProductPublic,
+    summary="Получить продукт по категории и slug",
+    description="Получает информацию о продукте по его slug и категории")
+async def get_product_by_category_and_slug(
+    category_slug: str,
+    slug: str,
+    db: AsyncSession = Depends(get_db)
+):
+    product_color = await crud.get_product_by_category_and_slug(db, category_slug, slug)
+    if not product_color:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+    
+    product = await crud.get_product_by_id(db, product_color.product_id)
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+    
+    sizes_map = await crud.get_sizes_for_products(db, [product_color.id])
+    images = await crud.list_product_images(db, product_color.id)
+    main_category = await crud.get_product_main_category(db, product.id)
+    sections = await crud.list_product_sections(db, product.id)
+    
+    validated_sections = []
+    if hasattr(ProductSectionOut, "model_validate"):
+        validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
+    else:
+        validated_sections = [ProductSectionOut.from_orm(s) for s in sections]
+    
+    return ProductPublic(
+        id=product_color.id,
+        product_id=product.id,
+        color_id=product_color.id,
+        slug=product_color.slug,
+        title=product_color.title,
+        categoryPath=[category_slug],
+        main_category=main_category,
+        price=product.price,
+        discount_price=product.discount_price,
+        currency=product.currency or "RUB",
+        weight=product.weight,
+        label=product_color.label or "Default",
+        hex=product_color.hex or "#000000",
+        sizes=sizes_map.get(product_color.id, []),
+        composition=product.composition,
+        fit=product.fit,
+        description=product.description,
+        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
+        meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
+        status=product.status or ProductStatus.IN_STOCK,
+        custom_sections=validated_sections
     )

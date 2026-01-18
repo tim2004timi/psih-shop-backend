@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Numeric, Boolean, DateTime, func, Enum, ForeignKey, Integer, CheckConstraint
+from sqlalchemy import Column, String, Text, Numeric, Boolean, DateTime, func, Enum, ForeignKey, Integer, CheckConstraint, Float
 from sqlalchemy.orm import declarative_base, relationship
 from src.models.base import Base
 import enum
@@ -15,7 +15,7 @@ class Product(Base):
     description = Column(Text, nullable=True)
     price = Column(Numeric(10, 2), nullable=False)
     discount_price = Column(Numeric(10, 2), nullable=True)
-    weight = Column(Integer, nullable=False) # weight in grams
+    weight = Column(Float, nullable=False) # weight of product
     currency = Column(String(3), default="RUB")
     composition = Column(String(200), nullable=True)
     fit = Column(String(50), nullable=True)
@@ -25,6 +25,8 @@ class Product(Base):
     meta_shipping = Column(String(100), nullable=True)
     meta_returns = Column(String(100), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+    sections = relationship("ProductSection", back_populates="product", cascade="all, delete-orphan", order_by="ProductSection.sort_order")
 
     __table_args__ = (
         CheckConstraint('price > 0', name='check_price_positive'),
@@ -40,7 +42,7 @@ class ProductColor(Base):
     __tablename__ = "product_colors"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    slug = Column(String(100), unique=True, index=True, nullable=False)  # slug продукта с цветом
+    slug = Column(String(100), index=True, nullable=False)  # slug продукта с цветом
     title = Column(String(200), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
     label = Column(String(100), nullable=False)  # название цвета
@@ -71,3 +73,16 @@ class ProductImage(Base):
     file = Column(String(200), nullable=False)
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, server_default=func.now())
+
+
+class ProductSection(Base):
+    __tablename__ = "product_sections"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+    product = relationship("Product", back_populates="sections")
