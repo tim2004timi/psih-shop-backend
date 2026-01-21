@@ -1,9 +1,12 @@
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any
 import logging
 
 from src.cdek import get_cdek_client, CDEKError
 from src.schemas.cdek import CDEKCity, CDEKOffice, CDEKOfficeList
+from src.database import get_db
+from src import crud
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -180,6 +183,116 @@ async def get_order_info_by_uuid(
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_order_info_by_uuid: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.get(
+    "/waybill",
+    summary="Получить URL накладной",
+    description="Генерирует накладную для заказа в CDEK и возвращает URL для скачивания."
+)
+async def get_waybill(
+    order_id: int = Query(..., description="ID заказа в системе"),
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, str]:
+    """
+    Получить URL накладной для заказа
+    
+    Args:
+        order_id: ID заказа в системе
+        
+    Returns:
+        URL для скачивания накладной
+        
+    Raises:
+        HTTPException 404: Если заказ не найден или не зарегистрирован в CDEK
+        HTTPException 502: Если произошла ошибка при запросе к CDEK API
+    """
+    # Получаем заказ из БД
+    order = await crud.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Заказ не найден"
+        )
+    
+    # Проверяем наличие cdek_uuid
+    if not order.cdek_uuid:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Заказ не зарегистрирован в СДЭК"
+        )
+    
+    try:
+        cdek_client = get_cdek_client()
+        url = await cdek_client.generate_waybill_url(order.cdek_uuid)
+        return {"url": url}
+        
+    except CDEKError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"CDEK API error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_waybill: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.get(
+    "/barcode",
+    summary="Получить URL штрихкода",
+    description="Генерирует штрихкод для заказа в CDEK и возвращает URL для скачивания."
+)
+async def get_barcode(
+    order_id: int = Query(..., description="ID заказа в системе"),
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, str]:
+    """
+    Получить URL штрихкода для заказа
+    
+    Args:
+        order_id: ID заказа в системе
+        
+    Returns:
+        URL для скачивания штрихкода
+        
+    Raises:
+        HTTPException 404: Если заказ не найден или не зарегистрирован в CDEK
+        HTTPException 502: Если произошла ошибка при запросе к CDEK API
+    """
+    # Получаем заказ из БД
+    order = await crud.get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Заказ не найден"
+        )
+    
+    # Проверяем наличие cdek_uuid
+    if not order.cdek_uuid:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Заказ не зарегистрирован в СДЭК"
+        )
+    
+    try:
+        cdek_client = get_cdek_client()
+        url = await cdek_client.generate_barcode_url(order.cdek_uuid)
+        return {"url": url}
+        
+    except CDEKError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"CDEK API error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_barcode: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"

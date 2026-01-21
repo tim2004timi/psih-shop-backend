@@ -74,12 +74,12 @@ BEGIN
     
     -- Устанавливаем default значение
     IF enum_type_name IS NOT NULL THEN
-        EXECUTE format('ALTER TABLE orders ALTER COLUMN status SET DEFAULT %L::%I', 'not_paid', enum_type_name);
-        RAISE NOTICE 'Set default status to "not_paid" using enum type "%"', enum_type_name;
+        EXECUTE format('ALTER TABLE orders ALTER COLUMN status SET DEFAULT %L::%I', 'NOT_PAID', enum_type_name);
+        RAISE NOTICE 'Set default status to "NOT_PAID" using enum type "%"', enum_type_name;
     ELSE
         -- Если enum не найден, возможно колонка VARCHAR, устанавливаем как строку
-        ALTER TABLE orders ALTER COLUMN status SET DEFAULT 'not_paid';
-        RAISE NOTICE 'Set default status to "not_paid" (column is VARCHAR, not enum)';
+        ALTER TABLE orders ALTER COLUMN status SET DEFAULT 'NOT_PAID';
+        RAISE NOTICE 'Set default status to "NOT_PAID" (column is VARCHAR, not enum)';
     END IF;
 END $$;
 

@@ -23,14 +23,14 @@ BEGIN
         -- Проверяем, существует ли уже это значение
         IF NOT EXISTS (
             SELECT 1 FROM pg_enum 
-            WHERE enumlabel = 'not_paid' 
+            WHERE enumlabel = 'NOT_PAID' 
             AND enumtypid = (SELECT oid FROM pg_type WHERE typname = enum_type_name)
         ) THEN
             -- Добавляем значение в enum
-            EXECUTE format('ALTER TYPE %I ADD VALUE %L', enum_type_name, 'not_paid');
-            RAISE NOTICE 'Added value "not_paid" to enum type "%"', enum_type_name;
+            EXECUTE format('ALTER TYPE %I ADD VALUE %L', enum_type_name, 'NOT_PAID');
+            RAISE NOTICE 'Added value "NOT_PAID" to enum type "%"', enum_type_name;
         ELSE
-            RAISE NOTICE 'Value "not_paid" already exists in enum type "%"', enum_type_name;
+            RAISE NOTICE 'Value "NOT_PAID" already exists in enum type "%"', enum_type_name;
         END IF;
     ELSE
         RAISE NOTICE 'Enum type for orders.status not found. Column might be VARCHAR, not enum. Skipping enum modification.';
@@ -38,7 +38,7 @@ BEGIN
 EXCEPTION 
     WHEN duplicate_object THEN
         -- Если значение уже существует, просто игнорируем
-        RAISE NOTICE 'Value "not_paid" already exists in enum. Continuing...';
+        RAISE NOTICE 'Value "NOT_PAID" already exists in enum. Continuing...';
     WHEN OTHERS THEN
         -- Если произошла любая ошибка, просто логируем
         RAISE NOTICE 'Error in enum modification: %. You may need to add enum value manually.', SQLERRM;
