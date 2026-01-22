@@ -1,4 +1,5 @@
 import httpx
+import asyncio
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
@@ -257,7 +258,7 @@ class CDEKClient:
                 response_data = response.json() if response.content else {}
                 
                 # Проверяем наличие ошибок
-                if response.status_code != 200:
+                if response.status_code != 202:
                     errors = response_data.get("errors", [])
                     if errors:
                         error_messages = [e.get("message", "Unknown error") for e in errors]
@@ -479,6 +480,168 @@ class CDEKClient:
         except Exception as e:
             logger.error(f"Unexpected error while getting order info: {str(e)}")
             raise CDEKError(f"Failed to get order info: {str(e)}")
+    
+    async def generate_waybill_url(self, cdek_uuid: str) -> str:
+        """
+        Сгенерировать накладную и получить URL для скачивания
+        
+        Args:
+            cdek_uuid: UUID заказа в системе CDEK
+            
+        Returns:
+            URL для скачивания накладной
+            
+        Raises:
+            CDEKError: Если не удалось сгенерировать накладную
+        """
+        token = await self._get_access_token()
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                # 1. Запрос на генерацию накладной
+                response = await client.post(
+                    f"{self.api_url}/print/orders",
+                    json={"orders": [{"order_uuid": cdek_uuid}]},
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json"
+                    },
+                    timeout=30.0
+                )
+                
+                if response.status_code not in (200, 202):
+                    error_text = response.text
+                    logger.error(f"CDEK waybill generation failed: {response.status_code} - {error_text}")
+                    raise CDEKError(f"Failed to generate waybill: {response.status_code}")
+                
+                response_data = response.json()
+                print_uuid = response_data.get("entity", {}).get("uuid")
+                
+                if not print_uuid:
+                    logger.error(f"CDEK waybill response missing uuid: {response_data}")
+                    raise CDEKError("Invalid response from CDEK: missing print uuid")
+                
+                logger.debug(f"Waybill generation requested, print_uuid: {print_uuid}")
+                
+                # 2. Задержка 2 секунды
+                await asyncio.sleep(2)
+                
+                # 3. Получение URL накладной
+                response = await client.get(
+                    f"{self.api_url}/print/orders/{print_uuid}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10.0
+                )
+                
+                if response.status_code != 200:
+                    error_text = response.text
+                    logger.error(f"CDEK waybill URL request failed: {response.status_code} - {error_text}")
+                    raise CDEKError(f"Failed to get waybill URL: {response.status_code}")
+                
+                result = response.json()
+                url = result.get("entity", {}).get("url")
+                
+                if not url:
+                    # Проверяем статусы на ошибки
+                    statuses = result.get("entity", {}).get("statuses", [])
+                    if statuses:
+                        last_status = statuses[-1]
+                        if last_status.get("code") == "FAIL":
+                            raise CDEKError(f"Waybill generation failed: {last_status.get('reason', 'Unknown error')}")
+                    raise CDEKError("Waybill URL not ready yet, try again later")
+                
+                logger.info(f"Waybill URL retrieved for order {cdek_uuid}: {url}")
+                return url
+                
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error while generating waybill: {str(e)}")
+            raise CDEKError(f"Failed to generate waybill: {str(e)}")
+        except CDEKError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error while generating waybill: {str(e)}")
+            raise CDEKError(f"Failed to generate waybill: {str(e)}")
+    
+    async def generate_barcode_url(self, cdek_uuid: str) -> str:
+        """
+        Сгенерировать штрихкод и получить URL для скачивания
+        
+        Args:
+            cdek_uuid: UUID заказа в системе CDEK
+            
+        Returns:
+            URL для скачивания штрихкода
+            
+        Raises:
+            CDEKError: Если не удалось сгенерировать штрихкод
+        """
+        token = await self._get_access_token()
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                # 1. Запрос на генерацию штрихкода
+                response = await client.post(
+                    f"{self.api_url}/print/barcodes",
+                    json={"orders": [{"order_uuid": cdek_uuid}]},
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json"
+                    },
+                    timeout=30.0
+                )
+                
+                if response.status_code not in (200, 202):
+                    error_text = response.text
+                    logger.error(f"CDEK barcode generation failed: {response.status_code} - {error_text}")
+                    raise CDEKError(f"Failed to generate barcode: {response.status_code}")
+                
+                response_data = response.json()
+                print_uuid = response_data.get("entity", {}).get("uuid")
+                
+                if not print_uuid:
+                    logger.error(f"CDEK barcode response missing uuid: {response_data}")
+                    raise CDEKError("Invalid response from CDEK: missing print uuid")
+                
+                logger.debug(f"Barcode generation requested, print_uuid: {print_uuid}")
+                
+                # 2. Задержка 2 секунды
+                await asyncio.sleep(2)
+                
+                # 3. Получение URL штрихкода
+                response = await client.get(
+                    f"{self.api_url}/print/barcodes/{print_uuid}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10.0
+                )
+                
+                if response.status_code != 200:
+                    error_text = response.text
+                    logger.error(f"CDEK barcode URL request failed: {response.status_code} - {error_text}")
+                    raise CDEKError(f"Failed to get barcode URL: {response.status_code}")
+                
+                result = response.json()
+                url = result.get("entity", {}).get("url")
+                
+                if not url:
+                    # Проверяем статусы на ошибки
+                    statuses = result.get("entity", {}).get("statuses", [])
+                    if statuses:
+                        last_status = statuses[-1]
+                        if last_status.get("code") == "FAIL":
+                            raise CDEKError(f"Barcode generation failed: {last_status.get('reason', 'Unknown error')}")
+                    raise CDEKError("Barcode URL not ready yet, try again later")
+                
+                logger.info(f"Barcode URL retrieved for order {cdek_uuid}: {url}")
+                return url
+                
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error while generating barcode: {str(e)}")
+            raise CDEKError(f"Failed to generate barcode: {str(e)}")
+        except CDEKError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error while generating barcode: {str(e)}")
+            raise CDEKError(f"Failed to generate barcode: {str(e)}")
 
 
 # Создаем глобальный экземпляр клиента (можно использовать как singleton)

@@ -144,9 +144,8 @@ async def update_order(
     return order_detail
 
 @router.post("/test_add_order_to_cdek",
-    response_model=OrderDetail,
     summary="Тестовый endpoint: добавить заказ в CDEK",
-    description="Создает заказ в CDEK и возвращает обновленный заказ с cdek_uuid. Тестовый endpoint.")
+    description="Создает заказ в CDEK и возвращает cdek_uuid. Тестовый endpoint.")
 async def test_add_order_to_cdek(
     order_id: int = Query(..., description="ID заказа"),
     shipment_point: str = Query("MSK5", description="Код ПВЗ отправления"),
@@ -183,15 +182,7 @@ async def test_add_order_to_cdek(
             db=db
         )
         
-        # Получаем обновленный заказ
-        order_detail = await crud.get_order_detail(db, order_id)
-        if not order_detail:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to retrieve updated order"
-            )
-        
-        return order_detail
+        return {"cdek_uuid": cdek_uuid}
         
     except CDEKError as e:
         raise HTTPException(
@@ -203,4 +194,3 @@ async def test_add_order_to_cdek(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to add order to CDEK: {str(e)}"
         )
-
