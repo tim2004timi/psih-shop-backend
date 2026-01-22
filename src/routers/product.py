@@ -684,6 +684,7 @@ async def get_product_by_id(
         # Если нет цветов, возвращаем продукт с пустым списком цветов
         return ProductDetail(
             id=product.id,
+            title=None,
             description=product.description,
             price=product.price,
             discount_price=product.discount_price,
@@ -725,8 +726,10 @@ async def get_product_by_id(
             sizes=sizes
         ))
     
+    title = colors_detail[0].title if colors_detail else None
     return ProductDetail(
         id=product.id,
+        title=title,
         description=product.description,
         price=product.price,
         discount_price=product.discount_price,

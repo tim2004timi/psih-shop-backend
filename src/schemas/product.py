@@ -181,6 +181,7 @@ class ProductColorDetail(BaseModel):
 class ProductDetail(BaseModel):
     """Детальная информация о продукте со всеми цветами"""
     id: int
+    title: Optional[str] = None
     description: Optional[str] = None
     price: Decimal
     discount_price: Optional[Decimal] = None
