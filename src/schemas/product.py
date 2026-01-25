@@ -100,6 +100,7 @@ class ProductImageOut(BaseModel):
     w: Optional[int] = None
     h: Optional[int] = None
     color: Optional[str] = None
+    sort_order: int = 0
 
 class ProductMeta(BaseModel):
     care: Optional[str] = None

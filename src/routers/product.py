@@ -97,7 +97,7 @@ async def get_products(
                 composition=product.composition,
                 fit=product.fit,
                 description=product.description,
-                images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None} for img in images_map.get(pc.id, [])],
+                images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None, "sort_order": img.sort_order} for img in images_map.get(pc.id, [])],
                 meta=meta_data,
                 status=product.status or ProductStatus.IN_STOCK,
                 custom_sections=validated_sections
@@ -162,7 +162,7 @@ async def get_product_by_slug(
         composition=product.composition,
         fit=product.fit,
         description=product.description,
-        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
+        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None, "sort_order": i.sort_order} for i in images],
         meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
         status=product.status or ProductStatus.IN_STOCK,
         custom_sections=validated_sections
@@ -722,7 +722,7 @@ async def get_product_by_id(
             title=color.title,
             label=color.label,
             hex=color.hex,
-            images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
+            images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None, "sort_order": i.sort_order} for i in images],
             sizes=sizes
         ))
     
@@ -799,7 +799,7 @@ async def get_product_by_category_and_slug(
         composition=product.composition,
         fit=product.fit,
         description=product.description,
-        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None} for i in images],
+        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None, "sort_order": i.sort_order} for i in images],
         meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
         status=product.status or ProductStatus.IN_STOCK,
         custom_sections=validated_sections
