@@ -263,7 +263,7 @@ async def delete_product_image(db: AsyncSession, image_id: int) -> bool:
     return True
 
 async def reorder_product_images(db: AsyncSession, product_color_id: int, image_ids: List[int]) -> bool:
-    """Изменить порядок изображений продукта"""
+    """Изменить порядок изображений продукта (не трогает primary image с sort_order=1000)"""
     result = await db.execute(
         select(ProductImage).where(ProductImage.product_color_id == product_color_id)
     )
@@ -271,6 +271,9 @@ async def reorder_product_images(db: AsyncSession, product_color_id: int, image_
     
     for index, img_id in enumerate(image_ids):
         if img_id in images:
+            # Не меняем sort_order для primary image (картинка для корзины/выбора цвета)
+            if images[img_id].sort_order == 1000:
+                continue
             images[img_id].sort_order = index
             
     await db.commit()
