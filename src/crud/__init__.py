@@ -27,3 +27,4 @@ from .collection import (
 from .orders import (
     create_order, get_orders, get_order_by_id, get_order_detail, get_orders_detail, update_order
 )
+from .site_settings import get_setting, set_setting

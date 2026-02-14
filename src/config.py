@@ -37,7 +37,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:8000",
+        "http://109.172.36.219:3000",
+        "https://psihclothes.com",
+        "http://psihclothes.com",
     ]
     
     # CDEK API settings
@@ -49,6 +51,14 @@ class Settings(BaseSettings):
     CDEK_TEST_PVZ_CODE_FROM: str = "MSK5"
     CDEK_TEST_PVZ_CODE_TO: str = "MSK71"
     
+    # TBank Payment settings
+    TBANK_TERMINAL_KEY: Optional[str] = None
+    TBANK_SECRET_KEY: Optional[str] = None
+    TBANK_API_URL: str = "https://securepay.tinkoff.ru/v2"
+    # These can be overridden in .env for production domain
+    TBANK_SUCCESS_URL: str = "https://psihclothes.com/ru/order-success"
+    TBANK_FAIL_URL: str = "https://psihclothes.com/ru/order-failed"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
@@ -56,7 +66,7 @@ class Settings(BaseSettings):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Генерируем DATABASE_URL если не указан
+        
         if not self.DATABASE_URL:
             self.DATABASE_URL = self.get_database_url()
     
@@ -68,10 +78,8 @@ class Settings(BaseSettings):
         """Генерирует async URL для подключения к PostgreSQL"""
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
-# Создаем экземпляр настроек
 settings = Settings()
 
-# Функция для dependency injection
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()

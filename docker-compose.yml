@@ -49,6 +49,10 @@ services:
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
       - MINIO_SECURE=False
       - SECRET_KEY=${SECRET_KEY}
+      - TBANK_TERMINAL_KEY=${TBANK_TERMINAL_KEY}
+      - TBANK_SECRET_KEY=${TBANK_SECRET_KEY}
+      - TBANK_SUCCESS_URL=${TBANK_SUCCESS_URL:-https://psihclothes.com/ru/order-success}
+      - TBANK_FAIL_URL=${TBANK_FAIL_URL:-https://psihclothes.com/ru/order-failed}
     depends_on:
       - postgres
       - minio

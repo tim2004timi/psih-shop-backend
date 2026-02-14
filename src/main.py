@@ -16,6 +16,8 @@ from src.routers.category import router as category_router
 from src.routers.collection import router as collection_router
 from src.routers.orders import router as orders_router
 from src.routers.cdek import router as cdek_router
+from src.routers.payments import router as payments_router
+from src.routers.site_settings import router as settings_router
 
 # Настройка логирования
 logging.basicConfig(
@@ -41,10 +43,11 @@ app.add_middleware(
     CORSMiddleware,
     # Frontend origins (dev/prod). Keep explicit list instead of "*" because we allow credentials.
     allow_origins=[
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "http://109.172.36.219:8080",
-        "http://46.173.25.54:8080",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://109.172.36.219:3000",
+        "https://psihclothes.com",
+        "http://psihclothes.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -90,6 +93,8 @@ main_router.include_router(category_router, tags=["Categories"])
 main_router.include_router(collection_router, tags=["Collections"])
 main_router.include_router(orders_router, tags=["Orders"])
 main_router.include_router(cdek_router, tags=["CDEK"])
+main_router.include_router(payments_router, tags=["Payments"])
+main_router.include_router(settings_router, tags=["Settings"])
 
 app.include_router(main_router)
 
