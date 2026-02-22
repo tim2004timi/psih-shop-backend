@@ -636,7 +636,7 @@ class CDEKClient:
                 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error while generating barcode: {str(e)}")
-                raise CDEKError(f"Failed to generate barcode: {str(e)}")
+            raise CDEKError(f"Failed to generate barcode: {str(e)}")
         except CDEKError:
             raise
         except Exception as e:
