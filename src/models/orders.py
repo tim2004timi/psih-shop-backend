@@ -23,7 +23,7 @@ class Order(Base):
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
     phone = Column(String(15), nullable=True)
-    city = Column(String(50), nullable=True)
+    city = Column(String(255), nullable=True)
     postal_code = Column(String(10), nullable=True)
     address = Column(String(200), nullable=True)
     total_price = Column(Numeric(10, 2), nullable=False)

@@ -13,7 +13,7 @@ class User(Base):
     phone = Column(String(15), nullable=True)
     avatar = Column(String(500), nullable=True)
     address = Column(String(200), nullable=True)
-    city = Column(String(50), nullable=True)
+    city = Column(String(255), nullable=True)
     postal_code = Column(String(10), nullable=True)
     country = Column(String(50), default="Russia")
     email_verified = Column(Boolean, default=False)

@@ -9,7 +9,7 @@ class OrderBase(BaseModel):
     first_name: str = Field(..., max_length=50, description="Имя покупателя")
     last_name: str = Field(..., max_length=50, description="Фамилия покупателя")
     phone: Optional[str] = Field(None, max_length=15, description="Телефон покупателя")
-    city: Optional[str] = Field(None, max_length=50, description="Город доставки")
+    city: Optional[str] = Field(None, max_length=255, description="Город доставки")
     postal_code: Optional[str] = Field(None, max_length=10, description="Почтовый индекс")
     address: Optional[str] = Field(None, max_length=200, description="Адрес доставки")
     status: OrderStatus = Field(default=OrderStatus.NOT_PAID, description="Статус заказа")
