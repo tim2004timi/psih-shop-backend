@@ -23,7 +23,7 @@ class Order(Base):
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
     phone = Column(String(15), nullable=True)
-    city = Column(String(50), nullable=True)
+    city = Column(String(255), nullable=True)
     postal_code = Column(String(10), nullable=True)
     address = Column(String(200), nullable=True)
     total_price = Column(Numeric(10, 2), nullable=False)
@@ -31,6 +31,7 @@ class Order(Base):
     status = Column(Enum(OrderStatus), default=OrderStatus.NOT_PAID)
     cdek_uuid = Column(String(100), nullable=True)
     cdek_status = Column(String(50), nullable=True)
+    cdek_number = Column(String(50), nullable=True)
     payment_id = Column(String(50), nullable=True, index=True)  # TBank PaymentId
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, server_default=func.now())

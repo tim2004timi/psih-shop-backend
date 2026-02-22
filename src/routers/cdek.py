@@ -1,14 +1,18 @@
 from fastapi import APIRouter, HTTPException, status, Query, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Dict, Any
 import logging
+import httpx
 
+from sqlalchemy import select
 from src.cdek import get_cdek_client, CDEKError
 from src.schemas.cdek import CDEKCity, CDEKOffice, CDEKOfficeList, CDEKOrderUpdate
 from src.database import get_db
 from src.config import settings
 from src.auth import get_current_user
+from src.models.orders import Order
 from src import crud
 from src.models.orders import Order
 from pydantic import ValidationError
@@ -160,7 +164,8 @@ async def get_offices(
     description="Получает информацию о заказе в CDEK по его UUID."
 )
 async def get_order_info_by_uuid(
-    uuid: str
+    uuid: str,
+    db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """
     Получить информацию о заказе в CDEK по UUID
@@ -180,21 +185,57 @@ async def get_order_info_by_uuid(
             detail="UUID cannot be empty"
         )
     
+    # Get order from DB first
+    result = await db.execute(
+        select(Order).where(Order.cdek_uuid == uuid.strip())
+    )
+    db_order = result.scalar_one_or_none()
+
     try:
         cdek_client = get_cdek_client()
         order_info = await cdek_client.get_order_info_by_uuid(uuid.strip())
+        
+        cdek_number = order_info.get("cdek_number") or order_info.get("entity", {}).get("cdek_number")
+        if cdek_number and db_order and not db_order.cdek_number:
+            db_order.cdek_number = str(cdek_number)
+            await db.commit()
+        
         return order_info
         
-    except CDEKError as e:
+    except (CDEKError, Exception) as e:
+        logger.error(f"CDEK API error for uuid {uuid}: {str(e)}")
+        # Fallback: return what we have in DB
+        if db_order:
+            return {
+                "cdek_number": db_order.cdek_number,
+                "uuid": db_order.cdek_uuid,
+                "status": None,
+            }
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"CDEK API error: {str(e)}"
         )
-    except Exception as e:
-        logger.error(f"Unexpected error in get_order_info_by_uuid: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+
+
+async def _proxy_cdek_pdf(url: str, filename: str) -> StreamingResponse:
+    """Download PDF from CDEK (with auth) and proxy it to the client."""
+    cdek_client = get_cdek_client()
+    token = await cdek_client._get_access_token()
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30.0
+        )
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to download PDF from CDEK: {resp.status_code} - {resp.text}"
+            )
+        return StreamingResponse(
+            iter([resp.content]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'}
         )
 
 
@@ -278,112 +319,58 @@ async def update_cdek_order(
 
 @router.get(
     "/waybill",
-    summary="Получить URL накладной",
-    description="Генерирует накладную для заказа в CDEK и возвращает URL для скачивания."
+    summary="Скачать накладную",
+    description="Генерирует накладную для заказа в CDEK и возвращает PDF."
 )
 async def get_waybill(
     order_id: int = Query(..., description="ID заказа в системе"),
     db: AsyncSession = Depends(get_db)
-) -> Dict[str, str]:
-    """
-    Получить URL накладной для заказа
-    
-    Args:
-        order_id: ID заказа в системе
-        
-    Returns:
-        URL для скачивания накладной
-        
-    Raises:
-        HTTPException 404: Если заказ не найден или не зарегистрирован в CDEK
-        HTTPException 502: Если произошла ошибка при запросе к CDEK API
-    """
-    # Получаем заказ из БД
+):
     order = await crud.get_order_by_id(db, order_id)
     if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Заказ не найден"
-        )
-    
-    # Проверяем наличие cdek_uuid
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
     if not order.cdek_uuid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Заказ не зарегистрирован в СДЭК"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не зарегистрирован в СДЭК")
     
     try:
         cdek_client = get_cdek_client()
         url = await cdek_client.generate_waybill_url(order.cdek_uuid)
-        return {"url": url}
-        
+        return await _proxy_cdek_pdf(url, f"waybill_{order_id}.pdf")
     except CDEKError as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"CDEK API error: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"CDEK API error: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error in get_waybill: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error: {str(e)}")
 
 
 @router.get(
     "/barcode",
-    summary="Получить URL штрихкода",
-    description="Генерирует штрихкод для заказа в CDEK и возвращает URL для скачивания."
+    summary="Скачать штрихкод",
+    description="Генерирует штрихкод для заказа в CDEK и возвращает PDF."
 )
 async def get_barcode(
     order_id: int = Query(..., description="ID заказа в системе"),
     db: AsyncSession = Depends(get_db)
-) -> Dict[str, str]:
-    """
-    Получить URL штрихкода для заказа
-    
-    Args:
-        order_id: ID заказа в системе
-        
-    Returns:
-        URL для скачивания штрихкода
-        
-    Raises:
-        HTTPException 404: Если заказ не найден или не зарегистрирован в CDEK
-        HTTPException 502: Если произошла ошибка при запросе к CDEK API
-    """
-    # Получаем заказ из БД
+):
     order = await crud.get_order_by_id(db, order_id)
     if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Заказ не найден"
-        )
-    
-    # Проверяем наличие cdek_uuid
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
     if not order.cdek_uuid:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Заказ не зарегистрирован в СДЭК"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не зарегистрирован в СДЭК")
     
     try:
         cdek_client = get_cdek_client()
         url = await cdek_client.generate_barcode_url(order.cdek_uuid)
-        return {"url": url}
-        
+        return await _proxy_cdek_pdf(url, f"barcode_{order_id}.pdf")
     except CDEKError as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"CDEK API error: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"CDEK API error: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error in get_barcode: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error: {str(e)}")
 
 
 @router.post(

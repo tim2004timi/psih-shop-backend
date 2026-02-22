@@ -35,7 +35,7 @@ class CDEKOfficeList(BaseModel):
 
 class CDEKOrderUpdate(BaseModel):
     """Schema for updating a CDEK order (type=1)"""
-    type: int = Field(1, description="Order type (1 - интернет-магазин)")
+    type: int = Field(1, description="Order type (1 - online store)")
     number: Optional[str] = Field(None, description="Client order number")
     tariff_code: Optional[int] = Field(None, description="Tariff code")
     comment: Optional[str] = Field(None, description="Order comment")
