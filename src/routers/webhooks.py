@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import logging
+import ipaddress
 
 from src.database import get_db
 from src.models.orders import Order
@@ -9,6 +10,31 @@ from src.models.orders import Order
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Webhooks"])
+
+_CDEK_ALLOWED_CIDRS = (
+    ipaddress.ip_network("194.49.120.0/24"),
+    ipaddress.ip_network("195.189.222.0/24"),
+)
+
+
+def _get_client_ip(request: Request) -> str | None:
+    # If behind proxy, the first IP in X-Forwarded-For is the client.
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return None
+
+
+def _is_allowed_cdek_ip(ip_str: str | None) -> bool:
+    if not ip_str:
+        return False
+    try:
+        ip_obj = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return any(ip_obj in net for net in _CDEK_ALLOWED_CIDRS)
 
 
 @router.post("/webhook/order_status")
@@ -20,6 +46,11 @@ async def cdek_order_status_webhook(
     CDEK webhook: ORDER_STATUS.
     Обновляет поле cdek_status по номеру заказа в нашей системе.
     """
+    client_ip = _get_client_ip(request)
+    if not _is_allowed_cdek_ip(client_ip):
+        logger.warning(f"CDEK webhook: forbidden IP {client_ip}")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    
     try:
         body = await request.json()
     except Exception:

@@ -23,8 +23,8 @@ router = APIRouter(prefix="/cdek", tags=["CDEK"])
 
 
 def _build_webhook_url(path: str) -> str:
-    base = "http://" + settings.HOST.strip() + ":8000/api"
-    return base
+    url = "http://" + settings.HOST.strip() + ":8000/api/" + path
+    return url
 
 
 @router.get(
