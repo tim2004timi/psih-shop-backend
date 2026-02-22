@@ -12,7 +12,7 @@ import hashlib
 import logging
 
 from src.database import get_db
-from src.auth import get_current_user
+from src.auth import get_current_user, get_optional_current_user
 from src.models.orders import Order, OrderProduct, OrderStatus
 from src.models.product import Product, ProductColor, ProductSize
 from src.config import settings
@@ -82,6 +82,23 @@ class TBankClient:
         
         return received_token.lower() == expected_token.lower()
     
+    async def get_state(self, payment_id: str) -> dict:
+        """Query TBank directly for current payment state"""
+        params = {
+            'TerminalKey': self.terminal_key,
+            'PaymentId': int(payment_id),  # TBank expects integer
+        }
+        token = self._generate_token(params)
+        params['Token'] = token
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.api_url}/GetState",
+                json=params,
+                timeout=8.0
+            )
+            return response.json()
+
     async def init_payment(
         self,
         order_id: int,
@@ -149,7 +166,7 @@ tbank_client = TBankClient()
 async def init_payment(
     request: PaymentInitRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: Optional[dict] = Depends(get_optional_current_user)
 ):
     """
     Initialize payment for an order.
@@ -170,8 +187,8 @@ async def init_payment(
             detail="Order not found"
         )
     
-    if not current_user.get("is_admin", False):
-        if order.user_id != current_user.get("id"):
+    if current_user and not current_user.get("is_admin", False):
+        if order.user_id and order.user_id != current_user.get("id"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You can only pay for your own orders"
@@ -237,6 +254,16 @@ async def init_payment(
                     'PaymentObject': 'commodity'
                 })
         
+        receipt_items.append({
+            'Name': 'Доставка СДЭК',
+            'Price': 30000,
+            'Quantity': 1,
+            'Amount': 30000,
+            'Tax': 'none',
+            'PaymentMethod': 'full_payment',
+            'PaymentObject': 'service'
+        })
+
         if not receipt_items:
             receipt_items.append({
                 'Name': description[:64],
@@ -351,31 +378,47 @@ async def payment_webhook(
 @router.get("/status/{order_id}")
 async def get_payment_status(
     order_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db)
 ):
-    """Get payment status for an order"""
+    """Get payment status for an order (public endpoint for post-payment redirect).
+    If status is still not_paid but payment_id exists, queries TBank directly
+    to avoid depending solely on webhook delivery timing.
+    """
     result = await db.execute(select(Order).where(Order.id == order_id))
     order = result.scalar_one_or_none()
-    
+
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found"
         )
-    
-    # Check user owns the order or is admin
-    if not current_user.get("is_admin", False):
-        if order.user_id != current_user.get("id"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only check your own orders"
-            )
-    
+
+    # Cache values before any async calls
+    final_status = order.status
+    final_payment_id = order.payment_id
+
+    # If still not_paid but payment was initialized, check TBank directly
+    if order.status == OrderStatus.NOT_PAID and order.payment_id:
+        try:
+            tbank_response = await tbank_client.get_state(order.payment_id)
+            logger.info(f"TBank GetState for order {order_id}: {tbank_response}")
+            tbank_status_val = tbank_response.get('Status')
+            if tbank_status_val in ['CONFIRMED', 'AUTHORIZED']:
+                order.status = OrderStatus.PAID
+                final_status = OrderStatus.PAID
+                logger.info(f"Order {order_id} updated to PAID via GetState")
+            elif tbank_status_val in ['REJECTED', 'CANCELLED', 'AUTH_FAIL', 'DEADLINE_EXPIRED']:
+                order.status = OrderStatus.PAYMENT_FAILED
+                final_status = OrderStatus.PAYMENT_FAILED
+                logger.info(f"Order {order_id} updated to PAYMENT_FAILED via GetState: {tbank_status_val}")
+            # get_db will commit the status update automatically after this endpoint returns
+        except Exception as e:
+            logger.warning(f"TBank GetState failed for order {order_id}: {e}")
+
     return {
         "order_id": order.id,
-        "status": order.status.value,
-        "payment_id": order.payment_id,
-        "is_paid": order.status != OrderStatus.NOT_PAID
+        "status": final_status.value,
+        "payment_id": final_payment_id,
+        "is_paid": final_status == OrderStatus.PAID
     }
 

@@ -84,6 +84,8 @@ class OrderDetail(BaseModel):
     status: OrderStatus
     cdek_status: Optional[str]
     user_id: Optional[int]
+    cdek_uuid: Optional[str] = None
+    cdek_number: Optional[str] = None
     created_at: datetime
     products: List[OrderProductDetail] = Field(default_factory=list)
 

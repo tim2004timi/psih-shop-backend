@@ -100,6 +100,10 @@ async def create_order(
         product_size.quantity = new_quantity
         updates.append(product_size)
     
+    # Добавляем стоимость доставки
+    delivery_cost = Decimal("300.00")
+    total_price += delivery_cost
+    
     # Создаем заказ
     order = Order(
         email=order_data.email,
@@ -224,6 +228,8 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
             delivery_method=order.delivery_method,
             status=order.status,
             user_id=order.user_id,
+            cdek_uuid=order.cdek_uuid,
+            cdek_number=order.cdek_number,
             created_at=order.created_at,
             products=[]
         )
@@ -290,6 +296,8 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
         delivery_method=order.delivery_method,
         status=order.status,
         user_id=order.user_id,
+        cdek_uuid=order.cdek_uuid,
+        cdek_number=order.cdek_number,
         created_at=order.created_at,
         products=products_detail
     )
