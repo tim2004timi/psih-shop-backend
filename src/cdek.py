@@ -636,12 +636,128 @@ class CDEKClient:
                 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error while generating barcode: {str(e)}")
-            raise CDEKError(f"Failed to generate barcode: {str(e)}")
+                raise CDEKError(f"Failed to generate barcode: {str(e)}")
         except CDEKError:
             raise
         except Exception as e:
             logger.error(f"Unexpected error while generating barcode: {str(e)}")
             raise CDEKError(f"Failed to generate barcode: {str(e)}")
+
+    async def create_webhook(self, webhook_type: str, url: str) -> Dict[str, Any]:
+        """
+        Создать подписку на вебхук в CDEK.
+        
+        Args:
+            webhook_type: Тип вебхука (например, ORDER_STATUS)
+            url: URL, на который отправляются события
+            
+        Returns:
+            JSON ответ CDEK API
+        """
+        token = await self._get_access_token()
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.api_url}/webhooks",
+                    json={
+                        "type": webhook_type,
+                        "url": url
+                    },
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json"
+                    },
+                    timeout=10.0
+                )
+                
+                if response.status_code != 200:
+                    error_text = response.text
+                    logger.error(f"CDEK webhook creation failed: {response.status_code} - {error_text}")
+                    raise CDEKError(f"Failed to create webhook: {response.status_code}")
+                
+                return response.json()
+                
+            except httpx.HTTPError as e:
+                logger.error(f"HTTP error while creating webhook: {str(e)}")
+                raise CDEKError(f"Failed to create webhook: {str(e)}")
+            except Exception as e:
+                logger.error(f"Unexpected error while creating webhook: {str(e)}")
+                raise CDEKError(f"Failed to create webhook: {str(e)}")
+
+    async def delete_webhook(self, uuid: str) -> Dict[str, Any]:
+        """
+        Удалить подписку на вебхук в CDEK.
+        
+        Args:
+            uuid: UUID вебхука
+            
+        Returns:
+            JSON ответ CDEK API
+        """
+        token = await self._get_access_token()
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.delete(
+                    f"{self.api_url}/webhooks/{uuid}",
+                    headers={
+                        "Authorization": f"Bearer {token}"
+                    },
+                    timeout=10.0
+                )
+                
+                if response.status_code != 200:
+                    error_text = response.text
+                    logger.error(f"CDEK webhook deletion failed: {response.status_code} - {error_text}")
+                    raise CDEKError(f"Failed to delete webhook: {response.status_code}")
+                
+                return response.json()
+                
+            except httpx.HTTPError as e:
+                logger.error(f"HTTP error while deleting webhook: {str(e)}")
+                raise CDEKError(f"Failed to delete webhook: {str(e)}")
+            except Exception as e:
+                logger.error(f"Unexpected error while deleting webhook: {str(e)}")
+                raise CDEKError(f"Failed to delete webhook: {str(e)}")
+
+    async def update_order(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Обновить заказ в CDEK (PATCH /orders).
+        
+        Args:
+            payload: Тело запроса для CDEK API
+            
+        Returns:
+            JSON ответ CDEK API
+        """
+        token = await self._get_access_token()
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.patch(
+                    f"{self.api_url}/orders",
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json"
+                    },
+                    timeout=10.0
+                )
+                
+                if response.status_code != 202:
+                    error_text = response.text
+                    logger.error(f"CDEK order update failed: {response.status_code} - {error_text}")
+                    raise CDEKError(f"Failed to update order: {response.status_code}")
+                
+                return response.json()
+                
+            except httpx.HTTPError as e:
+                logger.error(f"HTTP error while updating order: {str(e)}")
+                raise CDEKError(f"Failed to update order: {str(e)}")
+            except Exception as e:
+                logger.error(f"Unexpected error while updating order: {str(e)}")
+                raise CDEKError(f"Failed to update order: {str(e)}")
 
 
 # Создаем глобальный экземпляр клиента (можно использовать как singleton)
@@ -659,4 +775,3 @@ def get_cdek_client() -> CDEKClient:
     if _cdek_client is None:
         _cdek_client = CDEKClient()
     return _cdek_client
-

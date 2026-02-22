@@ -18,6 +18,7 @@ from src.routers.orders import router as orders_router
 from src.routers.cdek import router as cdek_router
 from src.routers.payments import router as payments_router
 from src.routers.site_settings import router as settings_router
+from src.routers.webhooks import router as webhooks_router
 
 # Настройка логирования
 logging.basicConfig(
@@ -97,5 +98,6 @@ main_router.include_router(payments_router, tags=["Payments"])
 main_router.include_router(settings_router, tags=["Settings"])
 
 app.include_router(main_router)
+app.include_router(webhooks_router)
 
 

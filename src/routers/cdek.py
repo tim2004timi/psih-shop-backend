@@ -4,14 +4,21 @@ from typing import List, Dict, Any
 import logging
 
 from src.cdek import get_cdek_client, CDEKError
-from src.schemas.cdek import CDEKCity, CDEKOffice, CDEKOfficeList
+from src.schemas.cdek import CDEKCity, CDEKOffice, CDEKOfficeList, CDEKOrderUpdate
 from src.database import get_db
+from src.config import settings
+from src.auth import get_current_user
 from src import crud
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/cdek", tags=["CDEK"])
+
+
+def _build_webhook_url(path: str) -> str:
+    base = "http://" + settings.HOST.strip() + ":8000/api"
+    return base
 
 
 @router.get(
@@ -189,6 +196,46 @@ async def get_order_info_by_uuid(
         )
 
 
+@router.patch(
+    "/order/{uuid}",
+    summary="Обновить заказ в CDEK (type=1)",
+    description="Обновляет заказ в CDEK. Использует PATCH /v2/orders."
+)
+async def update_cdek_order(
+    uuid: str,
+    payload: CDEKOrderUpdate,
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    if not uuid or not uuid.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="UUID cannot be empty"
+        )
+    
+    if not current_user.get("is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
+    try:
+        cdek_client = get_cdek_client()
+        body = payload.dict(exclude_none=True)
+        body["uuid"] = uuid.strip()
+        return await cdek_client.update_order(body)
+    except CDEKError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CDEK error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in update_cdek_order: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
 @router.get(
     "/waybill",
     summary="Получить URL накладной",
@@ -298,3 +345,70 @@ async def get_barcode(
             detail=f"Internal server error: {str(e)}"
         )
 
+
+@router.post(
+    "/subscribe_order_status",
+    summary="Подписать CDEK на вебхук статусов заказа",
+    description="Создает подписку CDEK на тип ORDER_STATUS и URL webhook/order_status."
+)
+async def subscribe_order_status_webhook(
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    if not current_user.get("is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
+    webhook_url = _build_webhook_url("webhook/order_status")
+    try:
+        cdek_client = get_cdek_client()
+        return await cdek_client.create_webhook("ORDER_STATUS", webhook_url)
+    except CDEKError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CDEK error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in subscribe_order_status_webhook: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.delete(
+    "/unsubscribe_order_status/{uuid}",
+    summary="Удалить подписку на вебхук по UUID",
+    description="Удаляет подписку CDEK на вебхуки по UUID."
+)
+async def delete_webhook(
+    uuid: str,
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    if not uuid or not uuid.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="UUID cannot be empty"
+        )
+    
+    if not current_user.get("is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
+    try:
+        cdek_client = get_cdek_client()
+        return await cdek_client.delete_webhook(uuid.strip())
+    except CDEKError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CDEK error: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in delete_webhook: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )

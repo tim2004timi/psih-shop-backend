@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 class CDEKCity(BaseModel):
@@ -33,3 +33,12 @@ class CDEKOfficeList(BaseModel):
     """Список пунктов выдачи из CDEK"""
     offices: List[CDEKOffice] = Field(..., description="Список пунктов выдачи")
 
+class CDEKOrderUpdate(BaseModel):
+    """Schema for updating a CDEK order (type=1)"""
+    type: int = Field(1, description="Order type (1 - ��������-�������)")
+    number: Optional[str] = Field(None, description="Client order number")
+    tariff_code: Optional[int] = Field(None, description="Tariff code")
+    comment: Optional[str] = Field(None, description="Order comment")
+    shipment_point: Optional[str] = Field(None, description="CDEK pickup point (from warehouse)")
+    delivery_point: Optional[str] = Field(None, description="CDEK pickup point (to warehouse)")
+    recipient: Optional[Dict[str, Any]] = Field(None, description="Recipient")
