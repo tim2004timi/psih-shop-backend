@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import List, Dict, Any
 import logging
 
@@ -9,6 +10,7 @@ from src.database import get_db
 from src.config import settings
 from src.auth import get_current_user
 from src import crud
+from src.models.orders import Order
 from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -204,7 +206,8 @@ async def get_order_info_by_uuid(
 async def update_cdek_order(
     uuid: str,
     payload: CDEKOrderUpdate,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     if not uuid or not uuid.strip():
         raise HTTPException(
@@ -222,7 +225,44 @@ async def update_cdek_order(
         cdek_client = get_cdek_client()
         body = payload.dict(exclude_none=True)
         body["uuid"] = uuid.strip()
-        return await cdek_client.update_order(body)
+        result = await cdek_client.update_order(body)
+        
+        # Update local order after successful CDEK update
+        order: Order | None = None
+        if payload.number:
+            try:
+                order_id = int(str(payload.number))
+                order_result = await db.execute(select(Order).where(Order.id == order_id))
+                order = order_result.scalar_one_or_none()
+            except Exception:
+                order = None
+        
+        if not order:
+            order_result = await db.execute(select(Order).where(Order.cdek_uuid == uuid.strip()))
+            order = order_result.scalar_one_or_none()
+        
+        if order:
+            # Update recipient info if provided
+            if payload.recipient:
+                recipient = payload.recipient
+                name = recipient.get("name")
+                if isinstance(name, str) and name.strip():
+                    parts = name.strip().split()
+                    order.first_name = parts[0]
+                    if len(parts) > 1:
+                        order.last_name = " ".join(parts[1:])
+                phone_list = recipient.get("phones") or []
+                if isinstance(phone_list, list) and phone_list:
+                    phone_number = phone_list[0].get("number") if isinstance(phone_list[0], dict) else None
+                    if phone_number:
+                        order.phone = phone_number
+                email = recipient.get("email")
+                if isinstance(email, str) and email.strip():
+                    order.email = email.strip()
+            
+            await db.commit()
+        
+        return result
     except CDEKError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
