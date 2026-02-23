@@ -96,8 +96,8 @@ main_router.include_router(orders_router, tags=["Orders"])
 main_router.include_router(cdek_router, tags=["CDEK"])
 main_router.include_router(payments_router, tags=["Payments"])
 main_router.include_router(settings_router, tags=["Settings"])
+main_router.include_router(webhooks_router, tags=["Webhooks"])
 
 app.include_router(main_router)
-app.include_router(webhooks_router)
 
 
