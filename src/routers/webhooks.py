@@ -14,6 +14,7 @@ router = APIRouter(tags=["Webhooks"])
 _CDEK_ALLOWED_CIDRS = (
     ipaddress.ip_network("194.49.120.0/24"),
     ipaddress.ip_network("195.189.222.0/24"),
+    ipaddress.ip_network("194.49.121.0/24"),
 )
 
 
