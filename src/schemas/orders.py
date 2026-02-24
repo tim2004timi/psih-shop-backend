@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+﻿from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List
 from decimal import Decimal
@@ -37,7 +37,7 @@ class OrderInDB(OrderBase):
     id: int
     total_price: Decimal = Field(..., decimal_places=2, gt=0, description="Общая стоимость заказа (должна быть больше 0)")
     delivery_method: DeliveryMethod = Field(..., description="Способ доставки")
-    cdek_status: Optional[str] = Field(None, description="Статус заказа в CDEK")
+    cdek_status: Optional[str] = Field(default=None, description="Статус заказа в CDEK")
     user_id: Optional[int]
     created_at: datetime
 
@@ -82,7 +82,7 @@ class OrderDetail(BaseModel):
     total_price: Decimal
     delivery_method: DeliveryMethod
     status: OrderStatus
-    cdek_status: Optional[str]
+    cdek_status: Optional[str] = None
     user_id: Optional[int]
     cdek_uuid: Optional[str] = None
     cdek_number: Optional[str] = None
