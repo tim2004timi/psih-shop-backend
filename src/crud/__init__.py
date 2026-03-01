@@ -28,3 +28,8 @@ from .orders import (
     create_order, get_orders, get_order_by_id, get_order_detail, get_orders_detail, update_order
 )
 from .site_settings import get_setting, set_setting
+from .promocode import (
+    create_promo_code, get_promo_codes, get_promo_code_by_id,
+    get_promo_code_by_code, update_promo_code, delete_promo_code,
+    validate_promo_code, increment_promo_usage
+)

@@ -2,9 +2,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.orders import Order, OrderProduct, DeliveryMethod
 from src.models.product import Product, ProductColor, ProductSize
+from src.models.promocode import PromoCode, DiscountType
 from src.schemas.orders import OrderCreate, OrderProductCreate, OrderDetail, OrderProductDetail, OrderUpdate
 from typing import List, Optional
 from decimal import Decimal
+from datetime import datetime
 from fastapi import HTTPException, status
 import logging
 
@@ -104,6 +106,28 @@ async def create_order(
     delivery_cost = Decimal("300.00")
     total_price += delivery_cost
     
+    # Промокод
+    promo_code_id = None
+    discount_amount = Decimal("0")
+    if order_data.promo_code:
+        result = await db.execute(
+            select(PromoCode).where(PromoCode.code == order_data.promo_code.upper().strip())
+        )
+        promo = result.scalar_one_or_none()
+        if promo and promo.is_active:
+            expired = promo.expires_at and promo.expires_at < datetime.utcnow()
+            exhausted = promo.max_uses and promo.used_count >= promo.max_uses
+            items_total = total_price - delivery_cost
+            min_ok = items_total >= (promo.min_order_amount or Decimal("0"))
+            if not expired and not exhausted and min_ok:
+                if promo.discount_type == DiscountType.PERCENTAGE:
+                    discount_amount = (items_total * promo.discount_value / Decimal("100")).quantize(Decimal("0.01"))
+                else:
+                    discount_amount = min(promo.discount_value, items_total)
+                total_price -= discount_amount
+                promo_code_id = promo.id
+                promo.used_count = (promo.used_count or 0) + 1
+    
     # Создаем заказ
     order = Order(
         email=order_data.email,
@@ -114,9 +138,11 @@ async def create_order(
         postal_code=order_data.postal_code,
         address=order_data.address,
         total_price=total_price,
-        delivery_method=DeliveryMethod.CDEK,  # По умолчанию
+        delivery_method=DeliveryMethod.CDEK,
         status=order_data.status,
-        user_id=order_data.user_id
+        user_id=order_data.user_id,
+        promo_code_id=promo_code_id,
+        discount_amount=discount_amount,
     )
     
     db.add(order)
@@ -214,7 +240,6 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
     order_products = order_products_result.scalars().all()
     
     if not order_products:
-        # Если нет товаров, возвращаем заказ с пустым списком
         return OrderDetail(
             id=order.id,
             email=order.email,
@@ -230,6 +255,8 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
             user_id=order.user_id,
             cdek_uuid=order.cdek_uuid,
             cdek_number=order.cdek_number,
+            promo_code_id=order.promo_code_id,
+            discount_amount=order.discount_amount or Decimal("0"),
             created_at=order.created_at,
             products=[]
         )
@@ -298,6 +325,8 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
         user_id=order.user_id,
         cdek_uuid=order.cdek_uuid,
         cdek_number=order.cdek_number,
+        promo_code_id=order.promo_code_id,
+        discount_amount=order.discount_amount or Decimal("0"),
         created_at=order.created_at,
         products=products_detail
     )

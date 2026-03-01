@@ -19,6 +19,7 @@ from src.routers.cdek import router as cdek_router
 from src.routers.payments import router as payments_router
 from src.routers.site_settings import router as settings_router
 from src.routers.webhooks import router as webhooks_router
+from src.routers.promocode import router as promocode_router
 
 # Настройка логирования
 logging.basicConfig(
@@ -97,6 +98,7 @@ main_router.include_router(cdek_router, tags=["CDEK"])
 main_router.include_router(payments_router, tags=["Payments"])
 main_router.include_router(settings_router, tags=["Settings"])
 main_router.include_router(webhooks_router, tags=["Webhooks"])
+main_router.include_router(promocode_router, tags=["PromoCodes"])
 
 app.include_router(main_router)
 

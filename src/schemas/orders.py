@@ -16,7 +16,7 @@ class OrderBase(BaseModel):
 
 class OrderCreate(OrderBase):
     user_id: Optional[int] = Field(None, description="ID пользователя (если заказ от авторизованного пользователя)")
-    # total_price будет вычисляться автоматически на основе товаров
+    promo_code: Optional[str] = Field(None, max_length=50, description="Промокод")
 
 class OrderProductBase(BaseModel):
     product_size_id: int = Field(..., description="ID размера продукта")
@@ -86,6 +86,8 @@ class OrderDetail(BaseModel):
     user_id: Optional[int]
     cdek_uuid: Optional[str] = None
     cdek_number: Optional[str] = None
+    promo_code_id: Optional[int] = None
+    discount_amount: Optional[Decimal] = Decimal("0")
     created_at: datetime
     products: List[OrderProductDetail] = Field(default_factory=list)
 
