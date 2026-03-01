@@ -12,6 +12,7 @@ class OrderBase(BaseModel):
     city: Optional[str] = Field(None, max_length=255, description="Город доставки")
     postal_code: Optional[str] = Field(None, max_length=10, description="Почтовый индекс")
     address: Optional[str] = Field(None, max_length=200, description="Адрес доставки")
+    comment: Optional[str] = Field(None, max_length=500, description="Комментарий к заказу (соц. сети)")
     status: OrderStatus = Field(default=OrderStatus.NOT_PAID, description="Статус заказа")
 
 class OrderCreate(OrderBase):
@@ -79,6 +80,7 @@ class OrderDetail(BaseModel):
     city: Optional[str]
     postal_code: Optional[str]
     address: Optional[str]
+    comment: Optional[str] = None
     total_price: Decimal
     delivery_method: DeliveryMethod
     status: OrderStatus

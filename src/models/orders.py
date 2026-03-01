@@ -35,6 +35,7 @@ class Order(Base):
     payment_id = Column(String(50), nullable=True, index=True)  # TBank PaymentId
     promo_code_id = Column(Integer, ForeignKey("promo_codes.id", ondelete="SET NULL"), nullable=True)
     discount_amount = Column(Numeric(10, 2), default=0)
+    comment = Column(String(500), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, server_default=func.now())
 

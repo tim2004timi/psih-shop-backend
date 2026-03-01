@@ -118,8 +118,7 @@ async def create_order(
             expired = promo.expires_at and promo.expires_at < datetime.utcnow()
             exhausted = promo.max_uses and promo.used_count >= promo.max_uses
             items_total = total_price - delivery_cost
-            min_ok = items_total >= (promo.min_order_amount or Decimal("0"))
-            if not expired and not exhausted and min_ok:
+            if not expired and not exhausted:
                 if promo.discount_type == DiscountType.PERCENTAGE:
                     discount_amount = (items_total * promo.discount_value / Decimal("100")).quantize(Decimal("0.01"))
                 else:
@@ -137,6 +136,7 @@ async def create_order(
         city=order_data.city,
         postal_code=order_data.postal_code,
         address=order_data.address,
+        comment=order_data.comment,
         total_price=total_price,
         delivery_method=DeliveryMethod.CDEK,
         status=order_data.status,
@@ -249,6 +249,7 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
             city=order.city,
             postal_code=order.postal_code,
             address=order.address,
+            comment=order.comment,
             total_price=order.total_price,
             delivery_method=order.delivery_method,
             status=order.status,
@@ -319,6 +320,7 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
         city=order.city,
         postal_code=order.postal_code,
         address=order.address,
+        comment=order.comment,
         total_price=order.total_price,
         delivery_method=order.delivery_method,
         status=order.status,
