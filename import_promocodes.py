@@ -167,7 +167,7 @@ def generate_sql(promos: List[Dict]) -> str:
         max_uses = str(p["max_uses"]) if p["max_uses"] is not None else "NULL"
         lines.append(
             f"INSERT INTO promo_codes (code, discount_type, discount_value, description, max_uses, used_count, is_active, expires_at) "
-            f"VALUES ('{code}', '{p['discount_type']}', {p['discount_value']}, '{desc}', {max_uses}, {p['used_count']}, true, {expires}) "
+            f"VALUES ('{code}', '{p['discount_type'].upper()}', {p['discount_value']}, '{desc}', {max_uses}, {p['used_count']}, true, {expires}) "
             f"ON CONFLICT (code) DO NOTHING;"
         )
     return "\n".join(lines)
