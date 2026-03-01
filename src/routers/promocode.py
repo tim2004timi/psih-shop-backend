@@ -46,7 +46,7 @@ async def create_promo(
 )
 async def list_promos(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(10000, ge=1, le=10000),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
