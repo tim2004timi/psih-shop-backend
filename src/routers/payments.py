@@ -254,11 +254,12 @@ async def init_payment(
                     'PaymentObject': 'commodity'
                 })
         
+        delivery_cost_kopecks = 30000
         receipt_items.append({
             'Name': 'Доставка СДЭК',
-            'Price': 30000,
+            'Price': delivery_cost_kopecks,
             'Quantity': 1,
-            'Amount': 30000,
+            'Amount': delivery_cost_kopecks,
             'Tax': 'none',
             'PaymentMethod': 'full_payment',
             'PaymentObject': 'service'
@@ -274,6 +275,24 @@ async def init_payment(
                 'PaymentMethod': 'full_payment',
                 'PaymentObject': 'commodity'
             })
+        
+        receipt_total = sum(item['Amount'] for item in receipt_items)
+        if receipt_total != amount and receipt_total > 0:
+            discount_kopecks = receipt_total - amount
+            if discount_kopecks > 0:
+                product_items = [i for i in receipt_items if i['PaymentObject'] == 'commodity']
+                if product_items:
+                    items_total = sum(i['Amount'] for i in product_items)
+                    remaining_discount = discount_kopecks
+                    for idx, item in enumerate(product_items):
+                        if idx == len(product_items) - 1:
+                            item_discount = remaining_discount
+                        else:
+                            item_discount = round(discount_kopecks * item['Amount'] / items_total)
+                            remaining_discount -= item_discount
+                        item['Amount'] -= item_discount
+                        if item['Quantity'] > 0:
+                            item['Price'] = item['Amount'] // item['Quantity']
         
         response = await tbank_client.init_payment(
             order_id=order.id,
