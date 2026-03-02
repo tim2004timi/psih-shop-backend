@@ -10,7 +10,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
-    phone = Column(String(15), nullable=True)
+    phone = Column(String(20), nullable=True)
     avatar = Column(String(500), nullable=True)
     address = Column(String(200), nullable=True)
     city = Column(String(255), nullable=True)

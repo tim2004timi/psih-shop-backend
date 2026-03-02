@@ -8,7 +8,7 @@ class OrderBase(BaseModel):
     email: str = Field(..., max_length=100, description="Email покупателя")
     first_name: str = Field(..., max_length=50, description="Имя покупателя")
     last_name: str = Field(..., max_length=50, description="Фамилия покупателя")
-    phone: Optional[str] = Field(None, max_length=15, description="Телефон покупателя")
+    phone: Optional[str] = Field(None, max_length=20, description="Телефон покупателя")
     city: Optional[str] = Field(None, max_length=255, description="Город доставки")
     postal_code: Optional[str] = Field(None, max_length=10, description="Почтовый индекс")
     address: Optional[str] = Field(None, max_length=200, description="Адрес доставки")
