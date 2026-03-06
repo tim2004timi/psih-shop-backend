@@ -17,7 +17,7 @@ from src.schemas.product import (
 from src.models.product import ProductStatus, Product, ProductColor, ProductSection
 from src.utils import slugify
 from src.services.catalog import build_product_public
-from src.services.media import upload_image
+from src.services.media import upload_image as upload_image_to_storage
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -305,7 +305,7 @@ async def upload_image(
 ):
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-    file_url = await upload_image(file)
+    file_url = await upload_image_to_storage(file)
     created = await crud.create_product_image(db, product_color_id, file_url=file_url, sort_order=sort_order)
     return {"id": created.id, "file": created.file, "sort_order": created.sort_order}
 
@@ -325,7 +325,7 @@ async def upload_primary_image(
     
     await crud.delete_primary_image(db, product_color_id)
     
-    file_url = await upload_image(file)
+    file_url = await upload_image_to_storage(file)
     created = await crud.create_product_image(db, product_color_id, file_url=file_url, sort_order=1000)
     return {"id": created.id, "file": created.file, "sort_order": created.sort_order}
 
