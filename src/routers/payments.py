@@ -2,7 +2,7 @@
 TBank Payment Integration Router
 Handles payment initialization and webhooks
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -16,6 +16,8 @@ from src.auth import get_current_user, get_optional_current_user
 from src.models.orders import Order, OrderProduct, OrderStatus
 from src.models.product import Product, ProductColor, ProductSize
 from src.config import settings
+from src.services.errors import internal_server_error, not_found
+from src.services.order_access import ensure_order_access
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,7 @@ class PaymentInitRequest(BaseModel):
     success_url: Optional[str] = None
     fail_url: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
+    access_token: Optional[str] = None
 
 class PaymentInitResponse(BaseModel):
     success: bool
@@ -154,7 +157,12 @@ class TBankClient:
             )
             result = response.json()
             
-        logger.info(f"TBank Init response: {result}")
+        logger.info(
+            "TBank Init response for order %s: success=%s, payment_id=%s",
+            order_id,
+            result.get("Success"),
+            result.get("PaymentId"),
+        )
         return result
 
 
@@ -187,12 +195,7 @@ async def init_payment(
             detail="Order not found"
         )
     
-    if current_user and not current_user.get("is_admin", False):
-        if order.user_id and order.user_id != current_user.get("id"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only pay for your own orders"
-            )
+    ensure_order_access(order, current_user=current_user, access_token=request.access_token)
     
     if order.status != OrderStatus.NOT_PAID:
         raise HTTPException(
@@ -317,7 +320,12 @@ async def init_payment(
             )
         else:
             error_msg = response.get('Message') or response.get('Details') or 'Unknown error'
-            logger.error(f"TBank Init failed: {response}")
+            logger.error(
+                "TBank Init failed for order %s: success=%s error_code=%s",
+                order.id,
+                response.get("Success"),
+                response.get("ErrorCode"),
+            )
             return PaymentInitResponse(
                 success=False,
                 error=error_msg
@@ -325,10 +333,7 @@ async def init_payment(
             
     except Exception as e:
         logger.error(f"Payment init error: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Payment initialization failed: {str(e)}"
-        )
+        raise internal_server_error("Payment initialization failed")
 
 
 @router.post("/webhook")
@@ -342,7 +347,13 @@ async def payment_webhook(
     """
     try:
         body = await request.json()
-        logger.info(f"Received TBank webhook: {body}")
+        logger.info(
+            "Received TBank webhook for order=%s payment_id=%s status=%s success=%s",
+            body.get("OrderId"),
+            body.get("PaymentId"),
+            body.get("Status"),
+            body.get("Success"),
+        )
         
         # Verify token
         if not tbank_client.verify_notification_token(body):
@@ -397,7 +408,9 @@ async def payment_webhook(
 @router.get("/status/{order_id}")
 async def get_payment_status(
     order_id: int,
-    db: AsyncSession = Depends(get_db)
+    access_token: Optional[str] = Query(None, description="Access token for guest orders"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
     """Get payment status for an order (public endpoint for post-payment redirect).
     If status is still not_paid but payment_id exists, queries TBank directly
@@ -407,10 +420,9 @@ async def get_payment_status(
     order = result.scalar_one_or_none()
 
     if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
+        raise not_found("Order not found")
+
+    ensure_order_access(order, current_user=current_user, access_token=access_token)
 
     # Cache values before any async calls
     final_status = order.status
@@ -430,7 +442,10 @@ async def get_payment_status(
                 order.status = OrderStatus.PAYMENT_FAILED
                 final_status = OrderStatus.PAYMENT_FAILED
                 logger.info(f"Order {order_id} updated to PAYMENT_FAILED via GetState: {tbank_status_val}")
-            # get_db will commit the status update automatically after this endpoint returns
+            if order.status != final_status:
+                final_status = order.status
+            if final_status != OrderStatus.NOT_PAID:
+                await db.commit()
         except Exception as e:
             logger.warning(f"TBank GetState failed for order {order_id}: {e}")
 

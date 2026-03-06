@@ -6,9 +6,10 @@ from src.models.promocode import PromoCode, DiscountType
 from src.schemas.orders import OrderCreate, OrderProductCreate, OrderDetail, OrderProductDetail, OrderUpdate
 from typing import List, Optional
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import HTTPException, status
 import logging
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +34,13 @@ async def create_order(
         )
     
     # Получаем все ID размеров продуктов
-    product_size_ids = [p.product_size_id for p in products]
+    product_size_ids = list(dict.fromkeys(p.product_size_id for p in products))
     
     # Загружаем все ProductSize
     result = await db.execute(
         select(ProductSize)
         .where(ProductSize.id.in_(product_size_ids))
+        .with_for_update()
     )
     product_sizes = result.scalars().all()
     
@@ -115,7 +117,7 @@ async def create_order(
         )
         promo = result.scalar_one_or_none()
         if promo and promo.is_active:
-            expired = promo.expires_at and promo.expires_at < datetime.utcnow()
+            expired = promo.expires_at and promo.expires_at < datetime.now(timezone.utc).replace(tzinfo=None)
             exhausted = promo.max_uses and promo.used_count >= promo.max_uses
             items_total = total_price - delivery_cost
             if not expired and not exhausted:
@@ -143,6 +145,7 @@ async def create_order(
         user_id=order_data.user_id,
         promo_code_id=promo_code_id,
         discount_amount=discount_amount,
+        access_token=secrets.token_hex(32),
     )
     
     db.add(order)
@@ -173,7 +176,7 @@ async def create_order(
         logger.error(f"Error creating order: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create order: {str(e)}"
+            detail="Failed to create order"
         )
 
 async def get_orders(
@@ -193,6 +196,11 @@ async def get_orders(
 async def get_order_by_id(db: AsyncSession, order_id: int) -> Optional[Order]:
     """Получить заказ по ID"""
     result = await db.execute(select(Order).where(Order.id == order_id))
+    return result.scalar_one_or_none()
+
+
+async def get_order_by_access_token(db: AsyncSession, access_token: str) -> Optional[Order]:
+    result = await db.execute(select(Order).where(Order.access_token == access_token))
     return result.scalar_one_or_none()
 
 async def update_order(
@@ -219,7 +227,12 @@ async def update_order(
         logger.error(f"Error updating order {order_id}: {str(e)}", exc_info=True)
         raise
 
-async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDetail]:
+async def get_order_detail(
+    db: AsyncSession,
+    order_id: int,
+    *,
+    include_access_token: bool = False,
+) -> Optional[OrderDetail]:
     """
     Получить полную информацию о заказе с товарами.
     
@@ -254,6 +267,7 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
             delivery_method=order.delivery_method,
             status=order.status,
             user_id=order.user_id,
+            access_token=order.access_token if include_access_token else None,
             cdek_uuid=order.cdek_uuid,
             cdek_number=order.cdek_number,
             promo_code_id=order.promo_code_id,
@@ -325,6 +339,7 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
         delivery_method=order.delivery_method,
         status=order.status,
         user_id=order.user_id,
+        access_token=order.access_token if include_access_token else None,
         cdek_uuid=order.cdek_uuid,
         cdek_number=order.cdek_number,
         promo_code_id=order.promo_code_id,
@@ -343,7 +358,7 @@ async def get_orders_detail(
     orders_detail = []
     
     for order in orders:
-        order_detail = await get_order_detail(db, order.id)
+        order_detail = await get_order_detail(db, order.id, include_access_token=False)
         if order_detail:
             orders_detail.append(order_detail)
     

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict, Any
 
 
@@ -9,8 +9,7 @@ class CDEKCity(BaseModel):
     full_name: str = Field(..., description="Полное название города")
     country_code: str = Field(..., description="Код страны")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CDEKOffice(BaseModel):
@@ -25,8 +24,7 @@ class CDEKOffice(BaseModel):
     latitude: float = Field(..., description="Широта")
     address: str = Field(..., description="Адрес пункта выдачи")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CDEKOfficeList(BaseModel):

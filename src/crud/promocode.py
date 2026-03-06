@@ -4,7 +4,7 @@ from src.models.promocode import PromoCode, DiscountType
 from src.schemas.promocode import PromoCodeCreate, PromoCodeUpdate, PromoCodeValidateResponse
 from typing import List, Optional
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ async def validate_promo_code(db: AsyncSession, code: str, order_amount: Decimal
     if not promo.is_active:
         return PromoCodeValidateResponse(valid=False, message="Промокод неактивен")
 
-    if promo.expires_at and promo.expires_at < datetime.utcnow():
+    if promo.expires_at and promo.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
         return PromoCodeValidateResponse(valid=False, message="Срок действия промокода истек")
 
     if promo.max_uses and promo.used_count >= promo.max_uses:

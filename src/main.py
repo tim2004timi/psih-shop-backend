@@ -1,14 +1,12 @@
-from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, Request, Response
+from fastapi import FastAPI, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-from datetime import timedelta
-from typing import List
 import asyncio
 import logging
 import sys
+from contextlib import asynccontextmanager
 
 from src.database import create_tables, check_db_connection
+from src.config import settings
 from src.auth import router as auth_router
 from src.routers.user import router as user_router
 from src.routers.product import router as product_router
@@ -32,25 +30,42 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await asyncio.sleep(2)
+
+    logger.info("Starting application...")
+
+    if settings.ENABLE_STARTUP_SCHEMA_SYNC:
+        logger.warning("ENABLE_STARTUP_SCHEMA_SYNC is enabled. Prefer Alembic migrations in production.")
+        try:
+            await create_tables()
+            logger.info("Database tables created/verified")
+        except Exception as e:
+            logger.error(f"Failed to create database tables: {str(e)}", exc_info=True)
+            raise
+
+    if await check_db_connection():
+        logger.info("Database connection is healthy")
+    else:
+        logger.error("Database connection failed")
+
+    yield
+
+
 app = FastAPI(
     title="Psih Shop API",
     description="API для интернет-магазина Psih Shop",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Настройка CORS
 app.add_middleware(
     CORSMiddleware,
-    # Frontend origins (dev/prod). Keep explicit list instead of "*" because we allow credentials.
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://109.172.36.219:3000",
-        "https://psihclothes.com",
-        "http://psihclothes.com",
-    ],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,26 +80,6 @@ async def add_no_cache_header(request: Request, call_next):
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     return response
-
-@app.on_event("startup")
-async def startup_event():
-    await asyncio.sleep(2)
-
-    logger.info("Starting application...")
-
-    # Создаем таблицы при старте приложения
-    try:
-        await create_tables()
-        logger.info("Database tables created/verified")
-    except Exception as e:
-        logger.error(f"Failed to create database tables: {str(e)}", exc_info=True)
-        raise
-    
-    # Проверяем подключение к БД
-    if await check_db_connection():
-        logger.info("✅ Database connection successful")
-    else:
-        logger.error("❌ Database connection failed")
 
 # Подключаем роутеры
 main_router = APIRouter(prefix="/api")

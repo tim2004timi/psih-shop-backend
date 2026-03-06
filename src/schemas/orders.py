@@ -1,4 +1,4 @@
-﻿from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 from typing import Optional, List
 from decimal import Decimal
@@ -29,7 +29,7 @@ class OrderProductCreate(OrderProductBase):
 class OrderCreateRequest(BaseModel):
     """Схема для создания заказа с товарами"""
     order: OrderCreate
-    products: List[OrderProductCreate] = Field(..., min_items=1, description="Список товаров в заказе")
+    products: List[OrderProductCreate] = Field(..., min_length=1, description="Список товаров в заказе")
 
 class OrderUpdate(BaseModel):
     status: Optional[OrderStatus] = None
@@ -40,17 +40,16 @@ class OrderInDB(OrderBase):
     delivery_method: DeliveryMethod = Field(..., description="Способ доставки")
     cdek_status: Optional[str] = Field(default=None, description="Статус заказа в CDEK")
     user_id: Optional[int]
+    access_token: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrderProductInDB(OrderProductBase):
     id: int
     order_id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrderProductDetail(BaseModel):
     """Детальная информация о товаре в заказе"""
@@ -67,8 +66,7 @@ class OrderProductDetail(BaseModel):
     size: str
     quantity: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrderDetail(BaseModel):
     """Полная информация о заказе с товарами"""
@@ -86,6 +84,7 @@ class OrderDetail(BaseModel):
     status: OrderStatus
     cdek_status: Optional[str] = None
     user_id: Optional[int]
+    access_token: Optional[str] = None
     cdek_uuid: Optional[str] = None
     cdek_number: Optional[str] = None
     promo_code_id: Optional[int] = None
@@ -93,5 +92,4 @@ class OrderDetail(BaseModel):
     created_at: datetime
     products: List[OrderProductDetail] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

@@ -2,20 +2,20 @@ from fastapi import APIRouter, HTTPException, status, Query, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 import httpx
 
-from sqlalchemy import select
 from src.cdek import get_cdek_client, CDEKError
 from src.schemas.cdek import CDEKCity, CDEKOffice, CDEKOfficeList, CDEKOrderUpdate
 from src.database import get_db
 from src.config import settings
-from src.auth import get_current_user
+from src.auth import get_current_user, get_optional_current_user
 from src.models.orders import Order
 from src import crud
-from src.models.orders import Order
 from pydantic import ValidationError
+from src.services.errors import bad_gateway, internal_server_error, not_found
+from src.services.order_access import ensure_admin, ensure_order_access
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,7 @@ router = APIRouter(prefix="/cdek", tags=["CDEK"])
 
 
 def _build_webhook_url(path: str) -> str:
-    url = "http://" + settings.HOST.strip() + ":8000/api/" + path
-    return url
+    return f"{settings.api_base_url}/api/{path}"
 
 
 @router.get(
@@ -76,16 +75,10 @@ async def suggest_cities(
         return cities
         
     except CDEKError as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"CDEK API error: {str(e)}"
-        )
+        raise bad_gateway("CDEK API error")
     except Exception as e:
         logger.error(f"Unexpected error in suggest_cities: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
+        raise internal_server_error()
 
 
 @router.get(
@@ -146,16 +139,10 @@ async def get_offices(
         return offices
         
     except CDEKError as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"CDEK API error: {str(e)}"
-        )
+        raise bad_gateway("CDEK API error")
     except Exception as e:
         logger.error(f"Unexpected error in get_offices: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
+        raise internal_server_error()
 
 
 @router.get(
@@ -165,7 +152,9 @@ async def get_offices(
 )
 async def get_order_info_by_uuid(
     uuid: str,
-    db: AsyncSession = Depends(get_db)
+    access_token: Optional[str] = Query(None, description="Access token for guest orders"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
 ) -> Dict[str, Any]:
     """
     Получить информацию о заказе в CDEK по UUID
@@ -190,6 +179,10 @@ async def get_order_info_by_uuid(
         select(Order).where(Order.cdek_uuid == uuid.strip())
     )
     db_order = result.scalar_one_or_none()
+    if not db_order:
+        raise not_found("Order not found")
+
+    ensure_order_access(db_order, current_user=current_user, access_token=access_token)
 
     try:
         cdek_client = get_cdek_client()
@@ -211,10 +204,7 @@ async def get_order_info_by_uuid(
                 "uuid": db_order.cdek_uuid,
                 "status": None,
             }
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"CDEK API error: {str(e)}"
-        )
+        raise bad_gateway("CDEK API error")
 
 
 async def _proxy_cdek_pdf(url: str, filename: str) -> StreamingResponse:
@@ -230,7 +220,7 @@ async def _proxy_cdek_pdf(url: str, filename: str) -> StreamingResponse:
         if resp.status_code != 200:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Failed to download PDF from CDEK: {resp.status_code} - {resp.text}"
+                detail="Failed to download PDF from CDEK"
             )
         return StreamingResponse(
             iter([resp.content]),
@@ -256,11 +246,7 @@ async def update_cdek_order(
             detail="UUID cannot be empty"
         )
     
-    if not current_user.get("is_admin", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
+    ensure_admin(current_user)
     
     try:
         cdek_client = get_cdek_client()
@@ -307,14 +293,11 @@ async def update_cdek_order(
     except CDEKError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"CDEK error: {str(e)}"
+            detail="CDEK rejected order update"
         )
     except Exception as e:
         logger.error(f"Unexpected error in update_cdek_order: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
+        raise internal_server_error()
 
 
 @router.get(
@@ -324,25 +307,28 @@ async def update_cdek_order(
 )
 async def get_waybill(
     order_id: int = Query(..., description="ID заказа в системе"),
-    db: AsyncSession = Depends(get_db)
+    access_token: Optional[str] = Query(None, description="Access token for guest orders"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
     order = await crud.get_order_by_id(db, order_id)
     if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
+        raise not_found("Order not found")
+    ensure_order_access(order, current_user=current_user, access_token=access_token)
     if not order.cdek_uuid:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не зарегистрирован в СДЭК")
+        raise not_found("Order is not registered in CDEK")
     
     try:
         cdek_client = get_cdek_client()
         url = await cdek_client.generate_waybill_url(order.cdek_uuid)
         return await _proxy_cdek_pdf(url, f"waybill_{order_id}.pdf")
     except CDEKError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"CDEK API error: {str(e)}")
+        raise bad_gateway("CDEK API error")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Unexpected error in get_waybill: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error: {str(e)}")
+        raise internal_server_error()
 
 
 @router.get(
@@ -352,25 +338,28 @@ async def get_waybill(
 )
 async def get_barcode(
     order_id: int = Query(..., description="ID заказа в системе"),
-    db: AsyncSession = Depends(get_db)
+    access_token: Optional[str] = Query(None, description="Access token for guest orders"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
     order = await crud.get_order_by_id(db, order_id)
     if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
+        raise not_found("Order not found")
+    ensure_order_access(order, current_user=current_user, access_token=access_token)
     if not order.cdek_uuid:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не зарегистрирован в СДЭК")
+        raise not_found("Order is not registered in CDEK")
     
     try:
         cdek_client = get_cdek_client()
         url = await cdek_client.generate_barcode_url(order.cdek_uuid)
         return await _proxy_cdek_pdf(url, f"barcode_{order_id}.pdf")
     except CDEKError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"CDEK API error: {str(e)}")
+        raise bad_gateway("CDEK API error")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Unexpected error in get_barcode: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Internal server error: {str(e)}")
+        raise internal_server_error()
 
 
 @router.post(
@@ -381,11 +370,7 @@ async def get_barcode(
 async def subscribe_order_status_webhook(
     current_user: dict = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    if not current_user.get("is_admin", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
+    ensure_admin(current_user)
     
     webhook_url = _build_webhook_url("webhook/order_status")
     try:
@@ -394,14 +379,11 @@ async def subscribe_order_status_webhook(
     except CDEKError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"CDEK error: {str(e)}"
+            detail="CDEK rejected webhook subscription"
         )
     except Exception as e:
         logger.error(f"Unexpected error in subscribe_order_status_webhook: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
+        raise internal_server_error()
 
 
 @router.delete(
@@ -419,11 +401,7 @@ async def delete_webhook(
             detail="UUID cannot be empty"
         )
     
-    if not current_user.get("is_admin", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
+    ensure_admin(current_user)
     
     try:
         cdek_client = get_cdek_client()
@@ -431,11 +409,8 @@ async def delete_webhook(
     except CDEKError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"CDEK error: {str(e)}"
+            detail="CDEK rejected webhook deletion"
         )
     except Exception as e:
         logger.error(f"Unexpected error in delete_webhook: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
+        raise internal_server_error()

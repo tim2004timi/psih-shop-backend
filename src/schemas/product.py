@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 from typing import Optional, List
 from decimal import Decimal
@@ -21,9 +21,7 @@ class ProductSectionOut(ProductSectionBase):
     id: int
     product_id: int
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductBase(BaseModel):
     description: Optional[str] = Field(None, description="Описание продукта")
@@ -60,9 +58,7 @@ class ProductInDB(ProductBase):
     id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductColorBase(BaseModel):
     slug: str = Field(..., max_length=100, description="Уникальный slug для продукта с цветом")
@@ -84,9 +80,7 @@ class ProductColorOut(ProductColorBase):
     product_id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductColorIn(BaseModel):
     slug: str
@@ -134,9 +128,7 @@ class ProductPublic(BaseModel):
     status: ProductStatus
     custom_sections: List[ProductSectionOut] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductSizeBase(BaseModel):
     size: str = Field(..., max_length=10, description="Размер")
@@ -154,9 +146,7 @@ class ProductSizeOut(ProductSizeBase):
     product_color_id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductSizeIn(BaseModel):
     size: str
@@ -199,6 +189,4 @@ class ProductDetail(BaseModel):
     colors: List[ProductColorDetail] = Field(default_factory=list)
     custom_sections: List[ProductSectionOut] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

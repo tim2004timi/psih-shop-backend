@@ -8,9 +8,8 @@ from src.config import settings
 import mimetypes
 import bcrypt
 import logging
-
-import logging
 import re
+from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
 
@@ -104,10 +103,13 @@ def generate_object_name(filename: str) -> tuple[str, str, str]:
 
 
 def build_public_url(object_name: str) -> str:
-    return f"http://{settings.HOST}:{settings.MINIO_PORT}/{settings.MINIO_BUCKET_NAME}/{object_name}"
+    return f"{settings.minio_public_base_url}/{settings.MINIO_BUCKET_NAME}/{object_name}"
 
 
 def resize_image(content: bytes, max_width: int) -> bytes:
+    Image.MAX_IMAGE_PIXELS = settings.MAX_IMAGE_PIXELS
+    image = Image.open(BytesIO(content))
+    image.verify()
     image = Image.open(BytesIO(content))
     if image.mode in ("RGBA", "P"):  # конвертим только если нужно
         image = image.convert("RGB")
@@ -126,6 +128,13 @@ def resize_image(content: bytes, max_width: int) -> bytes:
 async def upload_image_and_derivatives(file, filename: str) -> str:
     """Upload file and derivatives, return main file URL"""
     try:
+        content_type = getattr(file, "content_type", None)
+        if content_type and content_type not in settings.ALLOWED_IMAGE_CONTENT_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported image type",
+            )
+
         client = get_minio_client()
         base, medium, small = generate_object_name(filename)
         bucket = settings.MINIO_BUCKET_NAME
@@ -136,8 +145,14 @@ async def upload_image_and_derivatives(file, filename: str) -> str:
             logger.info(f"Created MinIO bucket: {bucket}")
 
         # read file content
-        file_bytes = await file.read()
+        file_bytes = await file.read(settings.MAX_UPLOAD_SIZE_BYTES + 1)
         await file.seek(0)  # reset file pointer
+
+        if len(file_bytes) > settings.MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="File is too large",
+            )
 
         # detect content-types
         base_ct, _ = mimetypes.guess_type(base)

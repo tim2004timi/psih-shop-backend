@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 
 
@@ -15,14 +15,11 @@ class CategoryNode(BaseModel):
     id: int
     name: str
     slug: str
-    children: List["CategoryNode"] = []
+    children: List["CategoryNode"] = Field(default_factory=list)
 
-    class Config:
-        arbitrary_types_allowed = True
-        json_schema_extra = {
-            "$defs": {
-                "CategoryNode": {}
-            }
-        }
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+CategoryNode.model_rebuild()
 
 

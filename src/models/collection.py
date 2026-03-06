@@ -1,5 +1,4 @@
-from sqlalchemy import Column, String, DateTime, func, Boolean, Integer, ForeignKey, Text, JSON
-from sqlalchemy.dialects.postgresql import ENUM
+from sqlalchemy import Column, String, DateTime, func, Boolean, Integer, ForeignKey, Text, JSON, Enum
 from src.models.base import Base
 import enum
 
@@ -25,7 +24,7 @@ class Collection(Base):
     sustainability = Column(Text, nullable=True)
     is_new = Column(Boolean, default=True)
     is_featured = Column(Boolean, default=False)
-    category = Column(ENUM(CollectionCategory), default=CollectionCategory.UNISEX)
+    category = Column(Enum(CollectionCategory), default=CollectionCategory.UNISEX)
     created_at = Column(DateTime, server_default=func.now())
 
 

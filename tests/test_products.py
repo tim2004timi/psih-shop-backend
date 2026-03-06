@@ -49,6 +49,7 @@ async def test_create_product(client: httpx.AsyncClient, auth_token: str):
         json={
             "description": "Test product description",
             "price": "99.99",
+            "weight": 0.5,
             "currency": "EUR",
             "composition": "100% Cotton",
             "fit": "Regular",
@@ -109,6 +110,7 @@ async def test_create_product_color(client: httpx.AsyncClient, auth_token: str):
         json={
             "description": "Test product",
             "price": "50.00",
+            "weight": 0.5,
             "currency": "EUR",
             "status": "in_stock"
         }
