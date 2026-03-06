@@ -512,3 +512,14 @@ async def get_sections_for_products(db: AsyncSession, product_ids: List[int]) ->
     for section in result.scalars().all():
         grouped[section.product_id].append(section)
     return grouped
+
+
+async def reorder_global_products(db: AsyncSession, product_ids: List[int]) -> bool:
+    """Изменить глобальный порядок товаров"""
+    result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
+    products = {p.id: p for p in result.scalars().all()}
+    for index, prod_id in enumerate(product_ids):
+        if prod_id in products:
+            products[prod_id].sort_order = index
+    await db.commit()
+    return True

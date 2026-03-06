@@ -25,6 +25,7 @@ class Product(Base):
     meta_shipping = Column(String(100), nullable=True)
     meta_returns = Column(String(100), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+    sort_order = Column(Integer, default=0)
 
     sections = relationship("ProductSection", back_populates="product", cascade="all, delete-orphan", order_by="ProductSection.sort_order")
 

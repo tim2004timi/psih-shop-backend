@@ -9,7 +9,8 @@ from .product import (
     reorder_product_images,
     get_product_main_category, get_main_categories_for_products,
     list_product_sections, create_product_section, update_product_section, delete_product_section,
-    reorder_product_sections, get_sections_for_products
+    reorder_product_sections, get_sections_for_products,
+    reorder_global_products
 )
 from .category import (
     create_category, delete_category, get_all_categories, build_tree,

@@ -287,6 +287,18 @@ async def delete_color(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Color not found")
     return
 
+# --- Global product reorder ---
+@router.put("/reorder", status_code=204, summary="Изменить глобальный порядок товаров")
+async def reorder_global_products(
+    product_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    await crud.reorder_global_products(db, product_ids)
+    return
+
 # --- ProductImage management ---
 @router.get("/colors/{product_color_id}/images", summary="Список изображений продукта")
 async def list_images(product_color_id: int, db: AsyncSession = Depends(get_db)):
