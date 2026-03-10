@@ -4,7 +4,7 @@ from src.database import get_db
 from src.auth import get_current_user
 from src.crud.site_settings import get_setting, set_setting
 from src.schemas.site_settings import SiteSettingPublic, SiteSettingUpdate
-from src.utils import upload_image_and_derivatives
+from src.services.media import upload_image
 import json
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
@@ -38,6 +38,6 @@ async def upload_banner(
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    file_url = await upload_image_and_derivatives(file, file.filename)
+    file_url = await upload_image(file)
     return {"url": file_url}
 

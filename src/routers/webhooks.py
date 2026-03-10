@@ -6,6 +6,7 @@ import ipaddress
 
 from src.database import get_db
 from src.models.orders import Order
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +20,8 @@ _CDEK_ALLOWED_CIDRS = (
 
 
 def _get_client_ip(request: Request) -> str | None:
-    # If behind proxy, the first IP in X-Forwarded-For is the client.
     xff = request.headers.get("x-forwarded-for")
-    if xff:
+    if settings.TRUST_X_FORWARDED_FOR and xff:
         return xff.split(",")[0].strip()
     if request.client:
         return request.client.host

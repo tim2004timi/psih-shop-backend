@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MinIO сервер
   minio:
@@ -49,6 +47,8 @@ services:
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
       - MINIO_SECURE=False
       - SECRET_KEY=${SECRET_KEY}
+      - BACKEND_PUBLIC_BASE_URL=${BACKEND_PUBLIC_BASE_URL:-http://localhost:8000}
+      - FRONTEND_PUBLIC_BASE_URL=${FRONTEND_PUBLIC_BASE_URL:-http://localhost:3000}
       - TBANK_TERMINAL_KEY=${TBANK_TERMINAL_KEY}
       - TBANK_SECRET_KEY=${TBANK_SECRET_KEY}
       - TBANK_SUCCESS_URL=${TBANK_SUCCESS_URL:-https://psihclothes.com/ru/order-success}
@@ -68,7 +68,7 @@ services:
     ports:
       - "5050:80"
     environment:
-      PGADMIN_DEFAULT_EMAIL: tim2004timi@mail.ru
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
       PGADMIN_DEFAULT_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:
       - postgres

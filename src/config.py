@@ -1,11 +1,21 @@
-import os
-from pydantic_settings import BaseSettings
-from typing import Optional
 from functools import lru_cache
+from typing import Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    # Host
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
+    # Public URLs
     HOST: str = "localhost"
+    BACKEND_PUBLIC_BASE_URL: str = "http://localhost:8000"
+    FRONTEND_PUBLIC_BASE_URL: str = "https://psihclothes.com"
+    TRUST_X_FORWARDED_FOR: bool = False
 
     # Database settings
     POSTGRES_DB: str
@@ -16,6 +26,7 @@ class Settings(BaseSettings):
     
     # Database URL
     DATABASE_URL: Optional[str] = None
+    TEST_DATABASE_URL: Optional[str] = None
     
     # JWT settings
     SECRET_KEY: str
@@ -29,18 +40,20 @@ class Settings(BaseSettings):
     MINIO_ROOT_PASSWORD: str
     MINIO_SECURE: bool = False
     MINIO_BUCKET_NAME: str = "photos"
+    MINIO_PUBLIC_BASE_URL: Optional[str] = None
     
     # Application settings
     DEBUG: bool = False
+    ENABLE_STARTUP_SCHEMA_SYNC: bool = False
     
     # CORS settings
-    CORS_ORIGINS: list = [
+    CORS_ORIGINS: list[str] = Field(default_factory=lambda: [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://109.172.36.219:3000",
         "https://psihclothes.com",
         "http://psihclothes.com",
-    ]
+    ])
     
     # CDEK API settings
     CDEK_ACCOUNT: Optional[str] = None
@@ -58,11 +71,16 @@ class Settings(BaseSettings):
     # These can be overridden in .env for production domain
     TBANK_SUCCESS_URL: str = "https://psihclothes.com/ru/order-success"
     TBANK_FAIL_URL: str = "https://psihclothes.com/ru/order-failed"
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = 'allow' 
+
+    # Media upload safety
+    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024
+    MAX_IMAGE_PIXELS: int = 20_000_000
+    ALLOWED_IMAGE_CONTENT_TYPES: list[str] = Field(default_factory=lambda: [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+    ])
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -76,7 +94,28 @@ class Settings(BaseSettings):
     
     def get_async_database_url(self) -> str:
         """Генерирует async URL для подключения к PostgreSQL"""
+        if self.DATABASE_URL:
+            return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+    def get_sync_database_url(self) -> str:
+        """Генерирует sync URL для миграций и утилит."""
+        if self.TEST_DATABASE_URL:
+            return self.TEST_DATABASE_URL
+        if self.DATABASE_URL:
+            return self.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
+        return self.get_database_url()
+
+    @property
+    def api_base_url(self) -> str:
+        return self.BACKEND_PUBLIC_BASE_URL.rstrip("/")
+
+    @property
+    def minio_public_base_url(self) -> str:
+        if self.MINIO_PUBLIC_BASE_URL:
+            return self.MINIO_PUBLIC_BASE_URL.rstrip("/")
+        scheme = "https" if self.MINIO_SECURE else "http"
+        return f"{scheme}://{self.HOST}:{self.MINIO_PORT}"
 
 settings = Settings()
 

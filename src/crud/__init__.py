@@ -9,7 +9,8 @@ from .product import (
     reorder_product_images,
     get_product_main_category, get_main_categories_for_products,
     list_product_sections, create_product_section, update_product_section, delete_product_section,
-    reorder_product_sections, get_sections_for_products
+    reorder_product_sections, get_sections_for_products,
+    reorder_global_products
 )
 from .category import (
     create_category, delete_category, get_all_categories, build_tree,
@@ -32,3 +33,8 @@ from .custom_status import (
     create_custom_status, delete_custom_status
 )
 from .site_settings import get_setting, set_setting
+from .promocode import (
+    create_promo_code, get_promo_codes, get_promo_code_by_id,
+    get_promo_code_by_code, update_promo_code, delete_promo_code,
+    validate_promo_code, increment_promo_usage
+)

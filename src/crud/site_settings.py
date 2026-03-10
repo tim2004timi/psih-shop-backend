@@ -15,5 +15,7 @@ async def set_setting(db: AsyncSession, key: str, value: str) -> SiteSetting:
         setting = SiteSetting(key=key, value=value)
         db.add(setting)
     await db.flush()
+    await db.commit()
+    await db.refresh(setting)
     return setting
 

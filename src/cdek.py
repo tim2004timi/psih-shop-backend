@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from decimal import Decimal
 from cachetools import TTLCache
+from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 
 logger = logging.getLogger(__name__)
@@ -112,7 +113,7 @@ class CDEKClient:
         order_id: int,
         shipment_point: str,
         delivery_point: str,
-        db: "AsyncSession"
+        db: AsyncSession
     ) -> str:
         """
         Создать заказ в CDEK и сохранить UUID в БД

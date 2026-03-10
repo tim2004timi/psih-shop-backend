@@ -15,7 +15,9 @@ from src.schemas.product import (
     ProductSectionCreate, ProductSectionUpdate, ProductSectionOut
 )
 from src.models.product import ProductStatus, Product, ProductColor, ProductSection
-from src.utils import upload_image_and_derivatives, slugify
+from src.utils import slugify
+from src.services.catalog import build_product_public
+from src.services.media import upload_image as upload_image_to_storage
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -59,48 +61,13 @@ async def get_products(
             if not product:
                 continue
                 
-            # Безопасная конвертация секций
-            raw_sections = sections_map.get(product.id, [])
-            validated_sections = []
-            for s in raw_sections:
-                try:
-                    # Используем универсальный способ валидации
-                    if hasattr(ProductSectionOut, "model_validate"):
-                        validated_sections.append(ProductSectionOut.model_validate(s))
-                    else:
-                        validated_sections.append(ProductSectionOut.from_orm(s))
-                except Exception as sec_e:
-                    logger.warning(f"Error validating section for product {pc.slug}: {sec_e}")
-
-            # Формируем мета-данные
-            meta_data = ProductMeta(
-                care=getattr(product, "meta_care", None),
-                shipping=getattr(product, "meta_shipping", None),
-                returns=getattr(product, "meta_returns", None),
-            )
-                
-            public_products.append(ProductPublic(
-                id=pc.id,
-                product_id=product.id,
-                color_id=pc.id,
-                slug=pc.slug,
-                title=pc.title,
-                categoryPath=[],
-                main_category=main_categories_map.get(product.id),
-                price=product.price,
-                discount_price=product.discount_price,
-                currency=product.currency or "RUB",
-                weight=product.weight,
-                label=pc.label or "Default",
-                hex=pc.hex or "#000000",
+            public_products.append(build_product_public(
+                product,
+                pc,
                 sizes=sizes_map.get(pc.id, []),
-                composition=product.composition,
-                fit=product.fit,
-                description=product.description,
-                images=[{"file": img.file, "alt": None, "w": None, "h": None, "color": None, "sort_order": img.sort_order} for img in images_map.get(pc.id, [])],
-                meta=meta_data,
-                status=product.status or ProductStatus.IN_STOCK,
-                custom_sections=validated_sections
+                images=images_map.get(pc.id, []),
+                main_category=main_categories_map.get(product.id),
+                sections=sections_map.get(product.id, []),
             ))
         except Exception as e:
             logger.error(f"CRITICAL: Failed to validate product {getattr(pc, 'slug', 'unknown')}: {str(e)}")
@@ -141,31 +108,13 @@ async def get_product_by_slug(
     main_category = await crud.get_product_main_category(db, product.id)
     sections = await crud.list_product_sections(db, product.id)
     
-    # Конвертируем секции
-    validated_sections = [ProductSectionOut.model_validate(s) for s in sections]
-    
-    return ProductPublic(
-        id=product_color.id,
-        product_id=product.id,
-        color_id=product_color.id,
-        slug=product_color.slug,
-        title=product_color.title,
-        categoryPath=[],
-        main_category=main_category,
-        price=product.price,
-        discount_price=product.discount_price,
-        currency=product.currency or "RUB",
-        weight=product.weight,
-        label=product_color.label or "Default",
-        hex=product_color.hex or "#000000",
+    return build_product_public(
+        product,
+        product_color,
         sizes=sizes_map.get(product_color.id, []),
-        composition=product.composition,
-        fit=product.fit,
-        description=product.description,
-        images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None, "sort_order": i.sort_order} for i in images],
-        meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
-        status=product.status or ProductStatus.IN_STOCK,
-        custom_sections=validated_sections
+        images=images,
+        main_category=main_category,
+        sections=sections,
     )
 
 # --- Product management ---
@@ -338,6 +287,18 @@ async def delete_color(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Color not found")
     return
 
+# --- Global product reorder ---
+@router.put("/reorder", status_code=204, summary="Изменить глобальный порядок товаров")
+async def reorder_global_products(
+    product_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    await crud.reorder_global_products(db, product_ids)
+    return
+
 # --- ProductImage management ---
 @router.get("/colors/{product_color_id}/images", summary="Список изображений продукта")
 async def list_images(product_color_id: int, db: AsyncSession = Depends(get_db)):
@@ -356,7 +317,7 @@ async def upload_image(
 ):
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-    file_url = await upload_image_and_derivatives(file, file.filename)
+    file_url = await upload_image_to_storage(file)
     created = await crud.create_product_image(db, product_color_id, file_url=file_url, sort_order=sort_order)
     return {"id": created.id, "file": created.file, "sort_order": created.sort_order}
 
@@ -376,7 +337,7 @@ async def upload_primary_image(
     
     await crud.delete_primary_image(db, product_color_id)
     
-    file_url = await upload_image_and_derivatives(file, file.filename)
+    file_url = await upload_image_to_storage(file)
     created = await crud.create_product_image(db, product_color_id, file_url=file_url, sort_order=1000)
     return {"id": created.id, "file": created.file, "sort_order": created.sort_order}
 

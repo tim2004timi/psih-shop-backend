@@ -13,6 +13,7 @@ from src.schemas.orders import (
     OrderUpdate
 )
 from src.cdek import get_cdek_client, CDEKError
+from src.services.errors import internal_server_error
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -37,7 +38,7 @@ async def create_order(
         )
         
         # Возвращаем полную информацию о заказе
-        order_detail = await crud.get_order_detail(db, order.id)
+        order_detail = await crud.get_order_detail(db, order.id, include_access_token=True)
         if not order_detail:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -48,10 +49,7 @@ async def create_order(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create order: {str(e)}"
-        )
+        raise internal_server_error("Failed to create order")
 
 @router.get("",
     response_model=List[OrderDetail],
@@ -82,7 +80,8 @@ async def get_order(
     current_user: dict = Depends(get_current_user)
 ):
     """Получить заказ по ID"""
-    order = await crud.get_order_detail(db, order_id)
+    include_access_token = not current_user.get("is_admin", False)
+    order = await crud.get_order_detail(db, order_id, include_access_token=include_access_token)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -188,10 +187,7 @@ async def test_add_order_to_cdek(
     except CDEKError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"CDEK error: {str(e)}"
+            detail="CDEK rejected order creation"
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to add order to CDEK: {str(e)}"
-        )
+        raise internal_server_error("Failed to add order to CDEK")

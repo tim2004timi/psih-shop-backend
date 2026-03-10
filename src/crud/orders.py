@@ -2,11 +2,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.orders import Order, OrderProduct, DeliveryMethod, CustomStatus
 from src.models.product import Product, ProductColor, ProductSize
+from src.models.promocode import PromoCode, DiscountType
 from src.schemas.orders import OrderCreate, OrderProductCreate, OrderDetail, OrderProductDetail, OrderUpdate
 from typing import List, Optional
 from decimal import Decimal
+from datetime import datetime, timezone
 from fastapi import HTTPException, status
 import logging
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +34,13 @@ async def create_order(
         )
     
     # Получаем все ID размеров продуктов
-    product_size_ids = [p.product_size_id for p in products]
+    product_size_ids = list(dict.fromkeys(p.product_size_id for p in products))
     
     # Загружаем все ProductSize
     result = await db.execute(
         select(ProductSize)
         .where(ProductSize.id.in_(product_size_ids))
+        .with_for_update()
     )
     product_sizes = result.scalars().all()
     
@@ -104,6 +108,27 @@ async def create_order(
     delivery_cost = Decimal("300.00")
     total_price += delivery_cost
     
+    # Промокод
+    promo_code_id = None
+    discount_amount = Decimal("0")
+    if order_data.promo_code:
+        result = await db.execute(
+            select(PromoCode).where(PromoCode.code == order_data.promo_code.upper().strip())
+        )
+        promo = result.scalar_one_or_none()
+        if promo and promo.is_active:
+            expired = promo.expires_at and promo.expires_at < datetime.now(timezone.utc).replace(tzinfo=None)
+            exhausted = promo.max_uses and promo.used_count >= promo.max_uses
+            items_total = total_price - delivery_cost
+            if not expired and not exhausted:
+                if promo.discount_type == DiscountType.PERCENTAGE:
+                    discount_amount = (items_total * promo.discount_value / Decimal("100")).quantize(Decimal("0.01"))
+                else:
+                    discount_amount = min(promo.discount_value, items_total)
+                total_price -= discount_amount
+                promo_code_id = promo.id
+                promo.used_count = (promo.used_count or 0) + 1
+    
     # Создаем заказ
     order = Order(
         email=order_data.email,
@@ -113,10 +138,14 @@ async def create_order(
         city=order_data.city,
         postal_code=order_data.postal_code,
         address=order_data.address,
+        comment=order_data.comment,
         total_price=total_price,
-        delivery_method=DeliveryMethod.CDEK,  # По умолчанию
+        delivery_method=DeliveryMethod.CDEK,
         status=order_data.status,
-        user_id=order_data.user_id
+        user_id=order_data.user_id,
+        promo_code_id=promo_code_id,
+        discount_amount=discount_amount,
+        access_token=secrets.token_hex(32),
     )
     
     db.add(order)
@@ -147,7 +176,7 @@ async def create_order(
         logger.error(f"Error creating order: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create order: {str(e)}"
+            detail="Failed to create order"
         )
 
 async def get_orders(
@@ -167,6 +196,11 @@ async def get_orders(
 async def get_order_by_id(db: AsyncSession, order_id: int) -> Optional[Order]:
     """Получить заказ по ID"""
     result = await db.execute(select(Order).where(Order.id == order_id))
+    return result.scalar_one_or_none()
+
+
+async def get_order_by_access_token(db: AsyncSession, access_token: str) -> Optional[Order]:
+    result = await db.execute(select(Order).where(Order.access_token == access_token))
     return result.scalar_one_or_none()
 
 async def update_order(
@@ -209,7 +243,12 @@ async def update_order(
         logger.error(f"Error updating order {order_id}: {str(e)}", exc_info=True)
         raise
 
-async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDetail]:
+async def get_order_detail(
+    db: AsyncSession,
+    order_id: int,
+    *,
+    include_access_token: bool = False,
+) -> Optional[OrderDetail]:
     """
     Получить полную информацию о заказе с товарами.
     
@@ -237,7 +276,6 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
     order_products = order_products_result.scalars().all()
     
     if not order_products:
-        # Если нет товаров, возвращаем заказ с пустым списком
         return OrderDetail(
             id=order.id,
             email=order.email,
@@ -247,13 +285,17 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
             city=order.city,
             postal_code=order.postal_code,
             address=order.address,
+            comment=order.comment,
             total_price=order.total_price,
             delivery_method=order.delivery_method,
             status=order.status,
             custom_status_name=custom_status_name,
             user_id=order.user_id,
+            access_token=order.access_token if include_access_token else None,
             cdek_uuid=order.cdek_uuid,
             cdek_number=order.cdek_number,
+            promo_code_id=order.promo_code_id,
+            discount_amount=order.discount_amount or Decimal("0"),
             created_at=order.created_at,
             products=[]
         )
@@ -316,13 +358,17 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
         city=order.city,
         postal_code=order.postal_code,
         address=order.address,
+        comment=order.comment,
         total_price=order.total_price,
         delivery_method=order.delivery_method,
         status=order.status,
         custom_status_name=custom_status_name,
         user_id=order.user_id,
+        access_token=order.access_token if include_access_token else None,
         cdek_uuid=order.cdek_uuid,
         cdek_number=order.cdek_number,
+        promo_code_id=order.promo_code_id,
+        discount_amount=order.discount_amount or Decimal("0"),
         created_at=order.created_at,
         products=products_detail
     )
@@ -337,7 +383,7 @@ async def get_orders_detail(
     orders_detail = []
     
     for order in orders:
-        order_detail = await get_order_detail(db, order.id)
+        order_detail = await get_order_detail(db, order.id, include_access_token=False)
         if order_detail:
             orders_detail.append(order_detail)
     
