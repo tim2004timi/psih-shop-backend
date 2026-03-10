@@ -27,4 +27,8 @@ from .collection import (
 from .orders import (
     create_order, get_orders, get_order_by_id, get_order_detail, get_orders_detail, update_order
 )
+from .custom_status import (
+    get_custom_status_by_id, get_custom_status_by_name, list_custom_statuses,
+    create_custom_status, delete_custom_status
+)
 from .site_settings import get_setting, set_setting

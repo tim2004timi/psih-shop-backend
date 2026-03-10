@@ -4,6 +4,18 @@ from typing import Optional, List
 from decimal import Decimal
 from src.models.orders import OrderStatus, DeliveryMethod
 
+class CustomStatusBase(BaseModel):
+    name: str = Field(..., max_length=100, description="Название статуса")
+
+class CustomStatusCreate(CustomStatusBase):
+    pass
+
+class CustomStatusOut(CustomStatusBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
 class OrderBase(BaseModel):
     email: str = Field(..., max_length=100, description="Email покупателя")
     first_name: str = Field(..., max_length=50, description="Имя покупателя")
@@ -32,12 +44,14 @@ class OrderCreateRequest(BaseModel):
 
 class OrderUpdate(BaseModel):
     status: Optional[OrderStatus] = None
+    custom_status_id: Optional[int] = Field(None, description="ID пользовательского статуса")
 
 class OrderInDB(OrderBase):
     id: int
     total_price: Decimal = Field(..., decimal_places=2, gt=0, description="Общая стоимость заказа (должна быть больше 0)")
     delivery_method: DeliveryMethod = Field(..., description="Способ доставки")
     cdek_status: Optional[str] = Field(default=None, description="Статус заказа в CDEK")
+    custom_status_name: Optional[str] = Field(default=None, description="Пользовательский статус заказа")
     user_id: Optional[int]
     created_at: datetime
 
@@ -83,6 +97,7 @@ class OrderDetail(BaseModel):
     delivery_method: DeliveryMethod
     status: OrderStatus
     cdek_status: Optional[str] = None
+    custom_status_name: Optional[str] = None
     user_id: Optional[int]
     cdek_uuid: Optional[str] = None
     cdek_number: Optional[str] = None

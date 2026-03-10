@@ -15,6 +15,7 @@ from src.routers.product import router as product_router
 from src.routers.category import router as category_router
 from src.routers.collection import router as collection_router
 from src.routers.orders import router as orders_router
+from src.routers.custom_statuses import router as custom_statuses_router
 from src.routers.cdek import router as cdek_router
 from src.routers.payments import router as payments_router
 from src.routers.site_settings import router as settings_router
@@ -93,6 +94,7 @@ main_router.include_router(product_router, tags=["Products"])
 main_router.include_router(category_router, tags=["Categories"])
 main_router.include_router(collection_router, tags=["Collections"])
 main_router.include_router(orders_router, tags=["Orders"])
+main_router.include_router(custom_statuses_router, tags=["CustomStatus"])
 main_router.include_router(cdek_router, tags=["CDEK"])
 main_router.include_router(payments_router, tags=["Payments"])
 main_router.include_router(settings_router, tags=["Settings"])

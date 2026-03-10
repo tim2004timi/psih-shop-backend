@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.models.orders import Order, OrderProduct, DeliveryMethod
+from src.models.orders import Order, OrderProduct, DeliveryMethod, CustomStatus
 from src.models.product import Product, ProductColor, ProductSize
 from src.schemas.orders import OrderCreate, OrderProductCreate, OrderDetail, OrderProductDetail, OrderUpdate
 from typing import List, Optional
@@ -178,11 +178,27 @@ async def update_order(
     order = await get_order_by_id(db, order_id)
     if not order:
         return None
-    
-    # Обновляем только статус
-    if order_update.status is not None:
+
+    fields_set = getattr(order_update, "model_fields_set", None)
+    if fields_set is None:
+        fields_set = order_update.__fields_set__
+
+    # Update only provided fields
+    if "status" in fields_set:
         order.status = order_update.status
-    
+
+    if "custom_status_id" in fields_set:
+        if order_update.custom_status_id is not None:
+            result = await db.execute(
+                select(CustomStatus).where(CustomStatus.id == order_update.custom_status_id)
+            )
+            if not result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Custom status not found"
+                )
+        order.custom_status_id = order_update.custom_status_id
+
     try:
         await db.commit()
         await db.refresh(order)
@@ -205,6 +221,13 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
     order = await get_order_by_id(db, order_id)
     if not order:
         return None
+
+    custom_status_name = None
+    if order.custom_status_id is not None:
+        custom_status_result = await db.execute(
+            select(CustomStatus.name).where(CustomStatus.id == order.custom_status_id)
+        )
+        custom_status_name = custom_status_result.scalar_one_or_none()
     
     # Получаем все товары заказа
     order_products_result = await db.execute(
@@ -227,6 +250,7 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
             total_price=order.total_price,
             delivery_method=order.delivery_method,
             status=order.status,
+            custom_status_name=custom_status_name,
             user_id=order.user_id,
             cdek_uuid=order.cdek_uuid,
             cdek_number=order.cdek_number,
@@ -295,6 +319,7 @@ async def get_order_detail(db: AsyncSession, order_id: int) -> Optional[OrderDet
         total_price=order.total_price,
         delivery_method=order.delivery_method,
         status=order.status,
+        custom_status_name=custom_status_name,
         user_id=order.user_id,
         cdek_uuid=order.cdek_uuid,
         cdek_number=order.cdek_number,

@@ -15,6 +15,15 @@ class OrderStatus(str, enum.Enum):
 class DeliveryMethod(str, enum.Enum):
     CDEK = "cdek"
 
+class CustomStatus(Base):
+    __tablename__ = "custom_statuses"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(100), nullable=False, unique=True, index=True)
+
+    def __repr__(self):
+        return f"<CustomStatus(id={self.id}, name={self.name})>"
+
 class Order(Base):
     __tablename__ = "orders"
 
@@ -34,6 +43,7 @@ class Order(Base):
     cdek_number = Column(String(50), nullable=True)
     payment_id = Column(String(50), nullable=True, index=True)  # TBank PaymentId
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    custom_status_id = Column(Integer, ForeignKey("custom_statuses.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
