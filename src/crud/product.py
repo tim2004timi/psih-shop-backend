@@ -42,7 +42,7 @@ async def get_products(
             (Product.description.ilike(search_filter))
         )
     
-    query = query.offset(skip).limit(limit).order_by(ProductColor.created_at.desc())
+    query = query.offset(skip).limit(limit).order_by(Product.sort_order.asc(), ProductColor.created_at.desc())
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -348,7 +348,7 @@ async def delete_product_size(db: AsyncSession, size_id: int) -> bool:
     ps = await db.get(ProductSize, size_id)
     if not ps:
         return False
-    db.delete(ps)
+    await db.delete(ps)
     await db.commit()
     return True
 
