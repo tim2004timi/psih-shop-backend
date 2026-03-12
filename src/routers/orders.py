@@ -58,6 +58,7 @@ async def create_order(
 async def get_orders(
     skip: int = Query(0, ge=0, description="Количество записей для пропуска"),
     limit: int = Query(100, ge=1, le=1000, description="Количество записей для возврата"),
+    search: Optional[str] = Query(None, description="Search by id, email, phone, status, cdek_status, cdek_number, custom_status"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -67,7 +68,7 @@ async def get_orders(
             detail="Admin access required"
         )
     
-    orders = await crud.get_orders_detail(db, skip=skip, limit=limit)
+    orders = await crud.get_orders_detail(db, skip=skip, limit=limit, search=search)
     return orders
 
 @router.get("/{order_id}",

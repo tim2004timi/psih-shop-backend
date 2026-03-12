@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, or_, String, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.orders import Order, OrderProduct, DeliveryMethod, CustomStatus
 from src.models.product import Product, ProductColor, ProductSize
@@ -182,17 +182,34 @@ async def create_order(
 async def get_orders(
     db: AsyncSession,
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    search: Optional[str] = None
 ) -> List[Order]:
-    """Получить список всех заказов с пагинацией"""
+    """Get orders list with pagination"""
+    query = select(Order)
+    if search:
+        search_value = search.strip()
+        if search_value:
+            query = query.outerjoin(CustomStatus, Order.custom_status_id == CustomStatus.id)
+            filters = [
+                Order.email.ilike(f"%{search_value}%"),
+                Order.phone.ilike(f"%{search_value}%"),
+                cast(Order.status, String).ilike(f"%{search_value}%"),
+                Order.cdek_status.ilike(f"%{search_value}%"),
+                Order.cdek_number.ilike(f"%{search_value}%"),
+                CustomStatus.name.ilike(f"%{search_value}%"),
+            ]
+            if search_value.isdigit():
+                filters.append(Order.id == int(search_value))
+            query = query.where(or_(*filters))
+
     result = await db.execute(
-        select(Order)
+        query
         .offset(skip)
         .limit(limit)
         .order_by(Order.created_at.desc())
     )
     return result.scalars().all()
-
 async def get_order_by_id(db: AsyncSession, order_id: int) -> Optional[Order]:
     """Получить заказ по ID"""
     result = await db.execute(select(Order).where(Order.id == order_id))
@@ -376,10 +393,11 @@ async def get_order_detail(
 async def get_orders_detail(
     db: AsyncSession,
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    search: Optional[str] = None
 ) -> List[OrderDetail]:
     """Получить список всех заказов с полной информацией о товарах"""
-    orders = await get_orders(db, skip, limit)
+    orders = await get_orders(db, skip, limit, search)
     orders_detail = []
     
     for order in orders:
