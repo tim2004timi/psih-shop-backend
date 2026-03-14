@@ -93,40 +93,82 @@ def get_minio_client() -> Minio:
     )
 
 
-def generate_object_name(filename: str) -> tuple[str, str, str]:
-    ext = os.path.splitext(filename)[1].lower()
+DERIVATIVE_SUFFIXES = ("medium", "small", "thumb")
+
+CACHE_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}
+
+
+def generate_object_name(filename: str) -> dict[str, str]:
+    ext = os.path.splitext(filename)[1].lower() or ".jpg"
     uid = str(uuid.uuid4())
-    base = f"{uid}{ext}"
-    medium = f"{uid}-medium{ext}"
-    small = f"{uid}-small{ext}"
-    return base, medium, small
+    return {
+        "original": f"{uid}{ext}",
+        "medium": f"{uid}-medium.webp",
+        "small": f"{uid}-small.webp",
+        "thumb": f"{uid}-thumb.webp",
+    }
 
 
 def build_public_url(object_name: str) -> str:
     return f"{settings.minio_public_base_url}/{settings.MINIO_BUCKET_NAME}/{object_name}"
 
 
-def resize_image(content: bytes, max_width: int) -> bytes:
+def _open_and_prepare(content: bytes) -> Image.Image:
     Image.MAX_IMAGE_PIXELS = settings.MAX_IMAGE_PIXELS
-    image = Image.open(BytesIO(content))
-    image.verify()
-    image = Image.open(BytesIO(content))
-    if image.mode in ("RGBA", "P"):  # конвертим только если нужно
-        image = image.convert("RGB")
-    w, h = image.size
-    if w <= max_width:
+    img = Image.open(BytesIO(content))
+    img.verify()
+    img = Image.open(BytesIO(content))
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    return img
+
+
+def resize_image_jpeg(content: bytes, max_width: int, quality: int = 92) -> bytes:
+    """Resize keeping the original format (JPEG) at high quality."""
+    img = _open_and_prepare(content)
+    w, h = img.size
+    if w <= max_width and h <= max_width:
         return content
-    ratio = max_width / float(w)
-    new_size = (max_width, int(h * ratio))
-    resized = image.resize(new_size, Image.LANCZOS)
+    if w > h:
+        ratio = max_width / float(w)
+    else:
+        ratio = max_width / float(h)
+    new_size = (int(w * ratio), int(h * ratio))
+    resized = img.resize(new_size, Image.LANCZOS)
     out = BytesIO()
-    fmt = image.format or "JPEG"
-    resized.save(out, format=fmt, quality=85, optimize=True)
+    resized.save(out, format="JPEG", quality=quality, optimize=True)
     return out.getvalue()
 
 
+def resize_image_webp(content: bytes, max_width: int, quality: int = 90) -> bytes:
+    """Resize and convert to WebP via Pillow (much better quality than
+    browser Canvas WebP encoding)."""
+    img = _open_and_prepare(content)
+    w, h = img.size
+    if w > h:
+        ratio = min(1.0, max_width / float(w))
+    else:
+        ratio = min(1.0, max_width / float(h))
+    new_size = (int(w * ratio), int(h * ratio))
+    resized = img.resize(new_size, Image.LANCZOS) if ratio < 1.0 else img
+    out = BytesIO()
+    resized.save(out, format="WEBP", quality=quality, method=6)
+    return out.getvalue()
+
+
+def _upload_bytes(client, bucket: str, name: str, data: bytes, content_type: str):
+    client.put_object(
+        bucket,
+        name,
+        data=BytesIO(data),
+        length=len(data),
+        content_type=content_type,
+        metadata=CACHE_HEADERS,
+    )
+
+
 async def upload_image_and_derivatives(file, filename: str) -> str:
-    """Upload file and derivatives, return main file URL"""
+    """Upload file and derivatives, return main file URL."""
     try:
         content_type = getattr(file, "content_type", None)
         if content_type and content_type not in settings.ALLOWED_IMAGE_CONTENT_TYPES:
@@ -136,17 +178,15 @@ async def upload_image_and_derivatives(file, filename: str) -> str:
             )
 
         client = get_minio_client()
-        base, medium, small = generate_object_name(filename)
+        names = generate_object_name(filename)
         bucket = settings.MINIO_BUCKET_NAME
 
-        # ensure bucket exists
         if not client.bucket_exists(bucket):
             client.make_bucket(bucket)
             logger.info(f"Created MinIO bucket: {bucket}")
 
-        # read file content
         file_bytes = await file.read(settings.MAX_UPLOAD_SIZE_BYTES + 1)
-        await file.seek(0)  # reset file pointer
+        await file.seek(0)
 
         if len(file_bytes) > settings.MAX_UPLOAD_SIZE_BYTES:
             raise HTTPException(
@@ -154,61 +194,54 @@ async def upload_image_and_derivatives(file, filename: str) -> str:
                 detail="File is too large",
             )
 
-        # detect content-types
-        base_ct, _ = mimetypes.guess_type(base)
-        medium_ct, _ = mimetypes.guess_type(medium)
-        small_ct, _ = mimetypes.guess_type(small)
-        base_ct = base_ct or "image/jpeg"
-        medium_ct = medium_ct or base_ct
-        small_ct = small_ct or base_ct
+        original_bytes = resize_image_jpeg(file_bytes, 2400, quality=92)
+        _upload_bytes(client, bucket, names["original"], original_bytes, "image/jpeg")
 
-        # upload original
-        client.put_object(bucket, base, data=BytesIO(file_bytes), length=len(file_bytes), content_type=base_ct)
+        medium_bytes = resize_image_webp(file_bytes, 1200, quality=90)
+        _upload_bytes(client, bucket, names["medium"], medium_bytes, "image/webp")
 
-        # medium and small
-        medium_bytes = resize_image(file_bytes, 1200)
-        small_bytes = resize_image(file_bytes, 800)
-        client.put_object(bucket, medium, data=BytesIO(medium_bytes), length=len(medium_bytes), content_type=medium_ct)
-        client.put_object(bucket, small, data=BytesIO(small_bytes), length=len(small_bytes), content_type=small_ct)
+        small_bytes = resize_image_webp(file_bytes, 600, quality=88)
+        _upload_bytes(client, bucket, names["small"], small_bytes, "image/webp")
 
-        logger.info(f"Successfully uploaded image: {base}")
-        return build_public_url(base)
+        thumb_bytes = resize_image_webp(file_bytes, 300, quality=80)
+        _upload_bytes(client, bucket, names["thumb"], thumb_bytes, "image/webp")
+
+        logger.info(f"Successfully uploaded image with derivatives: {names['original']}")
+        return build_public_url(names["original"])
     except Exception as e:
         logger.error(f"Failed to upload image {filename}: {str(e)}", exc_info=True)
         raise
 
+
 async def delete_image_from_minio(file_url: str):
-    """Delete image and its derivatives from MinIO"""
+    """Delete image and its derivatives from MinIO."""
     try:
         if not file_url:
             return
-        
-        # URL format: http://host:port/bucket/object_name
-        # We need to extract object_name
+
         parts = file_url.split('/')
         if len(parts) < 2:
             return
-        
+
         base_object_name = parts[-1]
         bucket = settings.MINIO_BUCKET_NAME
         client = get_minio_client()
-        
-        # Get filename and extension
-        name, ext = os.path.splitext(base_object_name)
-        
-        # List of objects to delete
+
+        name, _ext = os.path.splitext(base_object_name)
+
         objects_to_delete = [
             base_object_name,
-            f"{name}-medium{ext}",
-            f"{name}-small{ext}"
+            f"{name}-medium.webp",
+            f"{name}-small.webp",
+            f"{name}-thumb.webp",
         ]
-        
+
         for obj in objects_to_delete:
             try:
                 client.remove_object(bucket, obj)
                 logger.info(f"Deleted object from MinIO: {obj}")
             except Exception as e:
                 logger.warning(f"Failed to delete object {obj} from MinIO: {e}")
-                
+
     except Exception as e:
         logger.error(f"Error in delete_image_from_minio: {e}", exc_info=True)
