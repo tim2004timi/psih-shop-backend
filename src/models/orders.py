@@ -36,8 +36,14 @@ class Order(Base):
     postal_code = Column(String(10), nullable=True)
     address = Column(String(200), nullable=True)
     total_price = Column(Numeric(10, 2), nullable=False)
-    delivery_method = Column(Enum(DeliveryMethod), default=DeliveryMethod.CDEK)
-    status = Column(Enum(OrderStatus), default=OrderStatus.NOT_PAID)
+    delivery_method = Column(
+        Enum(DeliveryMethod, values_callable=lambda x: [e.value for e in x]),
+        default=DeliveryMethod.CDEK,
+    )
+    status = Column(
+        Enum(OrderStatus, values_callable=lambda x: [e.value for e in x]),
+        default=OrderStatus.NOT_PAID,
+    )
     cdek_uuid = Column(String(100), nullable=True)
     cdek_status = Column(String(50), nullable=True)
     cdek_number = Column(String(50), nullable=True)

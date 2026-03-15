@@ -435,13 +435,15 @@ async def get_payment_status(
                 f"(user may be arriving from TBank redirect)"
             )
 
+        # Cache all values upfront so we never touch the ORM after a failed commit
+        cached_order_id = order.id
         final_status = order.status
         final_payment_id = order.payment_id
 
         # If still not_paid but payment was initialized, check TBank directly
-        if order.status == OrderStatus.NOT_PAID and order.payment_id:
+        if final_status == OrderStatus.NOT_PAID and final_payment_id:
             try:
-                tbank_response = await tbank_client.get_state(order.payment_id)
+                tbank_response = await tbank_client.get_state(final_payment_id)
                 logger.info(f"TBank GetState for order {order_id}: {tbank_response}")
                 tbank_status_val = tbank_response.get('Status')
                 if tbank_status_val in ['CONFIRMED', 'AUTHORIZED']:
@@ -456,10 +458,14 @@ async def get_payment_status(
                     await db.commit()
             except Exception as e:
                 logger.warning(f"TBank GetState failed for order {order_id}: {e}")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
 
         return {
-            "order_id": order.id,
-            "status": final_status.value,
+            "order_id": cached_order_id,
+            "status": final_status.value if hasattr(final_status, 'value') else str(final_status),
             "payment_id": final_payment_id,
             "is_paid": final_status == OrderStatus.PAID
         }
