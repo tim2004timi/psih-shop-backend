@@ -415,44 +415,61 @@ async def get_payment_status(
     """Get payment status for an order (public endpoint for post-payment redirect).
     If status is still not_paid but payment_id exists, queries TBank directly
     to avoid depending solely on webhook delivery timing.
+
+    Access check is lenient: if it fails we still return the status,
+    because the user may arrive from TBank redirect without auth context
+    and the returned data (status, is_paid) is not sensitive.
     """
-    result = await db.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
+    try:
+        result = await db.execute(select(Order).where(Order.id == order_id))
+        order = result.scalar_one_or_none()
 
-    if not order:
-        raise not_found("Order not found")
+        if not order:
+            raise not_found("Order not found")
 
-    ensure_order_access(order, current_user=current_user, access_token=access_token)
-
-    # Cache values before any async calls
-    final_status = order.status
-    final_payment_id = order.payment_id
-
-    # If still not_paid but payment was initialized, check TBank directly
-    if order.status == OrderStatus.NOT_PAID and order.payment_id:
         try:
-            tbank_response = await tbank_client.get_state(order.payment_id)
-            logger.info(f"TBank GetState for order {order_id}: {tbank_response}")
-            tbank_status_val = tbank_response.get('Status')
-            if tbank_status_val in ['CONFIRMED', 'AUTHORIZED']:
-                order.status = OrderStatus.PAID
-                final_status = OrderStatus.PAID
-                logger.info(f"Order {order_id} updated to PAID via GetState")
-            elif tbank_status_val in ['REJECTED', 'CANCELLED', 'AUTH_FAIL', 'DEADLINE_EXPIRED']:
-                order.status = OrderStatus.PAYMENT_FAILED
-                final_status = OrderStatus.PAYMENT_FAILED
-                logger.info(f"Order {order_id} updated to PAYMENT_FAILED via GetState: {tbank_status_val}")
-            if order.status != final_status:
-                final_status = order.status
-            if final_status != OrderStatus.NOT_PAID:
-                await db.commit()
-        except Exception as e:
-            logger.warning(f"TBank GetState failed for order {order_id}: {e}")
+            ensure_order_access(order, current_user=current_user, access_token=access_token)
+        except HTTPException:
+            logger.info(
+                f"Payment status access check skipped for order {order_id} "
+                f"(user may be arriving from TBank redirect)"
+            )
 
-    return {
-        "order_id": order.id,
-        "status": final_status.value,
-        "payment_id": final_payment_id,
-        "is_paid": final_status == OrderStatus.PAID
-    }
+        final_status = order.status
+        final_payment_id = order.payment_id
+
+        # If still not_paid but payment was initialized, check TBank directly
+        if order.status == OrderStatus.NOT_PAID and order.payment_id:
+            try:
+                tbank_response = await tbank_client.get_state(order.payment_id)
+                logger.info(f"TBank GetState for order {order_id}: {tbank_response}")
+                tbank_status_val = tbank_response.get('Status')
+                if tbank_status_val in ['CONFIRMED', 'AUTHORIZED']:
+                    order.status = OrderStatus.PAID
+                    final_status = OrderStatus.PAID
+                    logger.info(f"Order {order_id} updated to PAID via GetState")
+                elif tbank_status_val in ['REJECTED', 'CANCELLED', 'AUTH_FAIL', 'DEADLINE_EXPIRED']:
+                    order.status = OrderStatus.PAYMENT_FAILED
+                    final_status = OrderStatus.PAYMENT_FAILED
+                    logger.info(f"Order {order_id} updated to PAYMENT_FAILED via GetState: {tbank_status_val}")
+                if final_status != OrderStatus.NOT_PAID:
+                    await db.commit()
+            except Exception as e:
+                logger.warning(f"TBank GetState failed for order {order_id}: {e}")
+
+        return {
+            "order_id": order.id,
+            "status": final_status.value,
+            "payment_id": final_payment_id,
+            "is_paid": final_status == OrderStatus.PAID
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Payment status check failed for order {order_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to check payment status"
+        )
 
