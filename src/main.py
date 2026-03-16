@@ -31,6 +31,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def _ensure_columns():
+    """Add any missing columns to existing tables (safe idempotent ALTER)."""
+    from src.database import engine
+    from sqlalchemy import text
+    migrations = [
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS size_chart TEXT",
+    ]
+    try:
+        async with engine.begin() as conn:
+            for stmt in migrations:
+                await conn.execute(text(stmt))
+        logger.info("Column auto-sync completed")
+    except Exception as e:
+        logger.warning(f"Column auto-sync skipped: {e}")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await asyncio.sleep(2)
@@ -45,6 +61,8 @@ async def lifespan(_: FastAPI):
         except Exception as e:
             logger.error(f"Failed to create database tables: {str(e)}", exc_info=True)
             raise
+
+    await _ensure_columns()
 
     if await check_db_connection():
         logger.info("Database connection is healthy")
