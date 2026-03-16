@@ -164,18 +164,28 @@ async def get_categories_by_product(db: AsyncSession, product_id: int) -> List[C
 
 
 async def reorder_category_products(db: AsyncSession, category_id: int, product_ids: List[int]) -> bool:
-    """Изменить порядок товаров в категории"""
-    # Получаем все связи для данной категории
+    """Изменить порядок товаров в категории. Accepts base product IDs or color IDs."""
     result = await db.execute(
         select(ProductCategory).where(ProductCategory.category_id == category_id)
     )
     links = {link.product_id: link for link in result.scalars().all()}
-    
-    # Обновляем sort_order для тех, что переданы в списке
-    for index, prod_id in enumerate(product_ids):
-        if prod_id in links:
-            links[prod_id].sort_order = index
-            
+
+    # Build mapping from color_id -> product_id for IDs not found directly
+    resolved_ids: List[int] = []
+    missing = [pid for pid in product_ids if pid not in links]
+    color_map: Dict[int, int] = {}
+    if missing:
+        color_result = await db.execute(
+            select(ProductColor).where(ProductColor.id.in_(missing))
+        )
+        for color in color_result.scalars().all():
+            color_map[color.id] = color.product_id
+
+    for index, pid in enumerate(product_ids):
+        actual_pid = pid if pid in links else color_map.get(pid)
+        if actual_pid and actual_pid in links:
+            links[actual_pid].sort_order = index
+
     await db.commit()
     return True
 

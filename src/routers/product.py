@@ -659,6 +659,7 @@ async def get_product_by_id(
             meta_care=product.meta_care,
             meta_shipping=product.meta_shipping,
             meta_returns=product.meta_returns,
+            size_chart=product.size_chart,
             colors=[],
             custom_sections=validated_sections
         )
@@ -704,6 +705,7 @@ async def get_product_by_id(
         meta_care=product.meta_care,
         meta_shipping=product.meta_shipping,
         meta_returns=product.meta_returns,
+        size_chart=product.size_chart,
         colors=colors_detail,
         custom_sections=validated_sections
     )

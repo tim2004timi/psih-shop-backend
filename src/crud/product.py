@@ -82,7 +82,8 @@ async def create_product(db: AsyncSession, product_create: ProductCreate) -> Pro
         is_pre_order=product_create.is_pre_order,
         meta_care=product_create.meta_care,
         meta_shipping=product_create.meta_shipping,
-        meta_returns=product_create.meta_returns
+        meta_returns=product_create.meta_returns,
+        size_chart=product_create.size_chart
     )
     db.add(db_product)
     await db.commit()
@@ -515,9 +516,22 @@ async def get_sections_for_products(db: AsyncSession, product_ids: List[int]) ->
 
 
 async def reorder_global_products(db: AsyncSession, product_ids: List[int]) -> bool:
-    """Изменить глобальный порядок товаров"""
+    """Изменить глобальный порядок товаров. Accepts base product IDs or color IDs."""
     result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
     products = {p.id: p for p in result.scalars().all()}
+
+    # If some IDs were not found as Product IDs, try resolving them as ProductColor IDs
+    missing = [pid for pid in product_ids if pid not in products]
+    if missing:
+        color_result = await db.execute(
+            select(ProductColor).where(ProductColor.id.in_(missing))
+        )
+        for color in color_result.scalars().all():
+            if color.product_id not in products:
+                prod = await db.get(Product, color.product_id)
+                if prod:
+                    products[color.id] = prod
+
     for index, prod_id in enumerate(product_ids):
         if prod_id in products:
             products[prod_id].sort_order = index

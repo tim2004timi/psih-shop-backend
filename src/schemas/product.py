@@ -36,6 +36,7 @@ class ProductBase(BaseModel):
     meta_care: Optional[str] = Field(None, max_length=200, description="Инструкции по уходу")
     meta_shipping: Optional[str] = Field(None, max_length=100, description="Информация о доставке")
     meta_returns: Optional[str] = Field(None, max_length=100, description="Информация о возврате")
+    size_chart: Optional[str] = Field(None, description="Таблица размеров (JSON)")
 
 class ProductCreate(ProductBase):
     pass  # id будет генерироваться автоматически
@@ -53,6 +54,7 @@ class ProductUpdate(BaseModel):
     meta_care: Optional[str] = Field(None, max_length=200)
     meta_shipping: Optional[str] = Field(None, max_length=100)
     meta_returns: Optional[str] = Field(None, max_length=100)
+    size_chart: Optional[str] = None
 
 class ProductInDB(ProductBase):
     id: int
@@ -186,6 +188,7 @@ class ProductDetail(BaseModel):
     meta_care: Optional[str] = None
     meta_shipping: Optional[str] = None
     meta_returns: Optional[str] = None
+    size_chart: Optional[str] = None
     colors: List[ProductColorDetail] = Field(default_factory=list)
     custom_sections: List[ProductSectionOut] = Field(default_factory=list)
 

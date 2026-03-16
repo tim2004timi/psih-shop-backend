@@ -24,6 +24,7 @@ class Product(Base):
     meta_care = Column(String(200), nullable=True)
     meta_shipping = Column(String(100), nullable=True)
     meta_returns = Column(String(100), nullable=True)
+    size_chart = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     sort_order = Column(Integer, default=0)
 
