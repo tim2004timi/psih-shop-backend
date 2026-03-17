@@ -76,6 +76,8 @@ class ProductColorUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
     label: Optional[str] = Field(None, max_length=100)
     hex: Optional[str] = Field(None, max_length=7)
+    price: Optional[Decimal] = None
+    discount_price: Optional[Decimal] = None
 
 class ProductColorOut(ProductColorBase):
     id: int
@@ -89,6 +91,8 @@ class ProductColorIn(BaseModel):
     title: str
     label: str
     hex: str
+    price: Optional[Decimal] = None
+    discount_price: Optional[Decimal] = None
 
 class ProductImageOut(BaseModel):
     file: str
@@ -168,6 +172,8 @@ class ProductColorDetail(BaseModel):
     title: str
     label: str
     hex: str
+    price: Optional[Decimal] = None
+    discount_price: Optional[Decimal] = None
     images: List[ProductImageOut] = Field(default_factory=list)
     sizes: List[dict] = Field(default_factory=list)  # список размеров с количеством
 

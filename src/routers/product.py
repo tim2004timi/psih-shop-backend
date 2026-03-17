@@ -192,7 +192,11 @@ async def delete_product(
 async def list_colors(product_id: int, db: AsyncSession = Depends(get_db)):
     colors = await crud.list_product_colors(db, product_id)
     return [
-        {"id": c.id, "slug": c.slug, "title": c.title, "label": c.label, "hex": c.hex} for c in colors
+        {
+            "id": c.id, "slug": c.slug, "title": c.title, "label": c.label, "hex": c.hex,
+            "price": str(c.price) if c.price is not None else None,
+            "discount_price": str(c.discount_price) if c.discount_price is not None else None,
+        } for c in colors
     ]
 
 @router.post("/{product_id}/colors", summary="Добавить цвет", status_code=201)
@@ -205,33 +209,45 @@ async def add_color(
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     
-    if await crud.check_slug_collision(db, color.slug, product_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Product with this slug already exists in the same category"
-        )
+    slug = color.slug
+    if await crud.check_slug_exists(db, slug) or await crud.check_slug_collision(db, slug, product_id):
+        slug = f"{slug}-{product_id}"
+        if await crud.check_slug_exists(db, slug) or await crud.check_slug_collision(db, slug, product_id):
+            import time
+            slug = f"{color.slug}-{int(time.time())}"
     
-    try:
-        created = await crud.create_product_color(
-            db, product_id, 
-            slug=color.slug, 
-            title=color.title, 
-            label=color.label, 
-            hex=color.hex
-        )
-    except IntegrityError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Product with this slug already exists"
-        )
-    except Exception:
-        logger.exception("Error creating product color")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal Server Error"
-        )
-
-    return {"id": created.id, "slug": created.slug, "title": created.title, "label": created.label, "hex": created.hex}
+    for attempt in range(3):
+        try:
+            created = await crud.create_product_color(
+                db, product_id, 
+                slug=slug, 
+                title=color.title, 
+                label=color.label, 
+                hex=color.hex,
+                price=color.price,
+                discount_price=color.discount_price,
+            )
+            return {
+                "id": created.id, "slug": created.slug, "title": created.title,
+                "label": created.label, "hex": created.hex,
+                "price": str(created.price) if created.price is not None else None,
+                "discount_price": str(created.discount_price) if created.discount_price is not None else None,
+            }
+        except IntegrityError:
+            await db.rollback()
+            import time
+            slug = f"{color.slug}-{int(time.time())}-{attempt}"
+            if attempt == 2:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Could not create product color - slug conflict persists"
+                )
+        except Exception:
+            logger.exception("Error creating product color")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal Server Error"
+            )
 
 @router.put("/colors/{color_id}", summary="Обновить цвет", status_code=200)
 async def update_color(
@@ -271,7 +287,9 @@ async def update_color(
         "slug": updated.slug, 
         "title": updated.title, 
         "label": updated.label, 
-        "hex": updated.hex
+        "hex": updated.hex,
+        "price": str(updated.price) if updated.price is not None else None,
+        "discount_price": str(updated.discount_price) if updated.discount_price is not None else None,
     }
 
 @router.delete("/colors/{color_id}", summary="Удалить цвет", status_code=204)
@@ -684,6 +702,8 @@ async def get_product_by_id(
             title=color.title,
             label=color.label,
             hex=color.hex,
+            price=color.price,
+            discount_price=color.discount_price,
             images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None, "sort_order": i.sort_order} for i in images],
             sizes=sizes
         ))

@@ -192,9 +192,9 @@ async def list_product_colors(db: AsyncSession, product_id: int) -> List[Product
     result = await db.execute(select(ProductColor).where(ProductColor.product_id == product_id))
     return result.scalars().all()
 
-async def create_product_color(db: AsyncSession, product_id: int, *, slug: str, title: str, label: str, hex: str) -> ProductColor:
+async def create_product_color(db: AsyncSession, product_id: int, *, slug: str, title: str, label: str, hex: str, price=None, discount_price=None) -> ProductColor:
     """Создать цвет продукта"""
-    color = ProductColor(product_id=product_id, slug=slug, title=title, label=label, hex=hex)
+    color = ProductColor(product_id=product_id, slug=slug, title=title, label=label, hex=hex, price=price, discount_price=discount_price)
     db.add(color)
     await db.commit()
     await db.refresh(color)

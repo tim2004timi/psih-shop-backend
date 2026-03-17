@@ -29,6 +29,9 @@ def build_product_public(
     main_category: object = None,
     sections: Sequence[object] = (),
 ) -> ProductPublic:
+    effective_price = color.price if color.price is not None else product.price
+    effective_discount = color.discount_price if color.discount_price is not None else product.discount_price
+
     return ProductPublic(
         id=color.id,
         product_id=product.id,
@@ -37,8 +40,8 @@ def build_product_public(
         title=color.title,
         categoryPath=[],
         main_category=main_category,
-        price=product.price,
-        discount_price=product.discount_price,
+        price=effective_price,
+        discount_price=effective_discount,
         currency=product.currency or "RUB",
         weight=product.weight,
         label=color.label or "Default",

@@ -49,6 +49,8 @@ class ProductColor(Base):
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
     label = Column(String(100), nullable=False)  # название цвета
     hex = Column(String(7), nullable=False)
+    price = Column(Numeric(10, 2), nullable=True)
+    discount_price = Column(Numeric(10, 2), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
 
