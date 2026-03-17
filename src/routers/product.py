@@ -210,9 +210,9 @@ async def add_color(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     
     slug = color.slug
-    if await crud.check_slug_exists(db, slug) or await crud.check_slug_collision(db, slug, product_id):
+    if await crud.check_slug_collision(db, slug, product_id):
         slug = f"{slug}-{product_id}"
-        if await crud.check_slug_exists(db, slug) or await crud.check_slug_collision(db, slug, product_id):
+        if await crud.check_slug_collision(db, slug, product_id):
             import time
             slug = f"{color.slug}-{int(time.time())}"
     
