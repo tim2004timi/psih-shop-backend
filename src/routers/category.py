@@ -24,47 +24,54 @@ async def list_categories(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{slug}", response_model=List[ProductPublic], summary="Продукты по категории")
 async def products_by_category(slug: str, db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import select
-    from src.models.product import Product
-    
-    product_colors = await crud.get_products_by_category_slug(db, slug)
-    if not product_colors:
-        return []
-    
-    # Получаем связанные продукты
-    product_ids = list(set([pc.product_id for pc in product_colors]))
-    products_map = {}
-    if product_ids:
-        result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
-        for p in result.scalars().all():
-            products_map[p.id] = p
-    
-    # Получаем размеры, изображения и секции  
-    color_ids = [pc.id for pc in product_colors]
-    sizes_map = await crud.get_sizes_for_products(db, color_ids)
-    images_map = await crud.get_images_for_products(db, color_ids)
-    main_categories_map = await crud.get_main_categories_for_products(db, product_ids)
-    sections_map = await crud.get_sections_for_products(db, product_ids)
-    
-    result: List[ProductPublic] = []
-    for pc in product_colors:
-        try:
-            product = products_map.get(pc.product_id)
-            if not product:
+    try:
+        from sqlalchemy import select
+        from src.models.product import Product
+        
+        product_colors = await crud.get_products_by_category_slug(db, slug)
+        if not product_colors:
+            return []
+        
+        # Получаем связанные продукты
+        product_ids = list(set([pc.product_id for pc in product_colors]))
+        products_map = {}
+        if product_ids:
+            result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
+            for p in result.scalars().all():
+                products_map[p.id] = p
+        
+        # Получаем размеры, изображения и секции  
+        color_ids = [pc.id for pc in product_colors]
+        sizes_map = await crud.get_sizes_for_products(db, color_ids)
+        images_map = await crud.get_images_for_products(db, color_ids)
+        main_categories_map = await crud.get_main_categories_for_products(db, product_ids)
+        sections_map = await crud.get_sections_for_products(db, product_ids)
+        
+        result: List[ProductPublic] = []
+        for pc in product_colors:
+            try:
+                product = products_map.get(pc.product_id)
+                if not product:
+                    continue
+                    
+                result.append(build_product_public(
+                    product,
+                    pc,
+                    sizes=sizes_map.get(pc.id, []),
+                    images=images_map.get(pc.id, []),
+                    main_category=main_categories_map.get(product.id),
+                    sections=sections_map.get(product.id, []),
+                ))
+            except Exception as e:
+                logger.error(f"Failed to serialize product for category={slug}, color_id={getattr(pc, 'id', None)}: {e}")
                 continue
-                
-            result.append(build_product_public(
-                product,
-                pc,
-                sizes=sizes_map.get(pc.id, []),
-                images=images_map.get(pc.id, []),
-                main_category=main_categories_map.get(product.id),
-                sections=sections_map.get(product.id, []),
-            ))
-        except Exception as e:
-            logger.error(f"Failed to serialize product for category={slug}, color_id={getattr(pc, 'id', None)}: {e}")
-            continue
-    return result
+        return result
+    except Exception as e:
+        logger.error(f"Error getting products for category {slug}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get products for category: {str(e)}"
+        )
 
 
 @router.post("", status_code=201, summary="Создать категорию")

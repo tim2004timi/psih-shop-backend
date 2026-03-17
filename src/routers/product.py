@@ -36,49 +36,56 @@ async def get_products(
     db: AsyncSession = Depends(get_db)
 ):
     """Получить список продуктов с фильтрацией"""
-    product_colors = await crud.get_products(db, skip=skip, limit=limit, status=status, search=search)
-    total = await crud.get_products_count(db, status=status, search=search)
-    
-    # Получаем связанные продукты
-    product_ids = list(set([pc.product_id for pc in product_colors]))
-    products_map = {}
-    if product_ids:
-        result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
-        for p in result.scalars().all():
-            products_map[p.id] = p
-    
-    # Получаем размеры, изображения и аккордеоны
-    color_ids = [pc.id for pc in product_colors]
-    sizes_map = await crud.get_sizes_for_products(db, color_ids)
-    images_map = await crud.get_images_for_products(db, color_ids)
-    main_categories_map = await crud.get_main_categories_for_products(db, product_ids)
-    sections_map = await crud.get_sections_for_products(db, product_ids)
-    
-    public_products = []
-    for pc in product_colors:
-        try:
-            product = products_map.get(pc.product_id)
-            if not product:
+    try:
+        product_colors = await crud.get_products(db, skip=skip, limit=limit, status=status, search=search)
+        total = await crud.get_products_count(db, status=status, search=search)
+        
+        # Получаем связанные продукты
+        product_ids = list(set([pc.product_id for pc in product_colors]))
+        products_map = {}
+        if product_ids:
+            result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
+            for p in result.scalars().all():
+                products_map[p.id] = p
+        
+        # Получаем размеры, изображения и аккордеоны
+        color_ids = [pc.id for pc in product_colors]
+        sizes_map = await crud.get_sizes_for_products(db, color_ids)
+        images_map = await crud.get_images_for_products(db, color_ids)
+        main_categories_map = await crud.get_main_categories_for_products(db, product_ids)
+        sections_map = await crud.get_sections_for_products(db, product_ids)
+        
+        public_products = []
+        for pc in product_colors:
+            try:
+                product = products_map.get(pc.product_id)
+                if not product:
+                    continue
+                    
+                public_products.append(build_product_public(
+                    product,
+                    pc,
+                    sizes=sizes_map.get(pc.id, []),
+                    images=images_map.get(pc.id, []),
+                    main_category=main_categories_map.get(product.id),
+                    sections=sections_map.get(product.id, []),
+                ))
+            except Exception as e:
+                logger.error(f"CRITICAL: Failed to validate product {getattr(pc, 'slug', 'unknown')}: {str(e)}")
                 continue
-                
-            public_products.append(build_product_public(
-                product,
-                pc,
-                sizes=sizes_map.get(pc.id, []),
-                images=images_map.get(pc.id, []),
-                main_category=main_categories_map.get(product.id),
-                sections=sections_map.get(product.id, []),
-            ))
-        except Exception as e:
-            logger.error(f"CRITICAL: Failed to validate product {getattr(pc, 'slug', 'unknown')}: {str(e)}")
-            continue
 
-    return ProductList(
-        products=public_products,
-        total=total,
-        skip=skip,
-        limit=limit
-    )
+        return ProductList(
+            products=public_products,
+            total=total,
+            skip=skip,
+            limit=limit
+        )
+    except Exception as e:
+        logger.error(f"Error getting products: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get products: {str(e)}"
+        )
 
 @router.get("/slug/{slug}", 
     response_model=ProductPublic,
@@ -134,8 +141,15 @@ async def create_product(
             detail="Admin access required"
         )
     
-    product = await crud.create_product(db, product_create)
-    return {"id": product.id, "message": "Product created. Now create a color variant."}
+    try:
+        product = await crud.create_product(db, product_create)
+        return {"id": product.id, "message": "Product created. Now create a color variant."}
+    except Exception as e:
+        logger.error(f"Error creating product: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create product: {str(e)}"
+        )
 
 @router.put("/base/{product_id}", 
     response_model=dict,
