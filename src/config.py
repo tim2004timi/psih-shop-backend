@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     
     def get_async_database_url(self) -> str:
         """Генерирует async URL для подключения к PostgreSQL"""
+        # Temporary fallback to SQLite for development
+        import os
+        if not os.environ.get('FORCE_POSTGRES'):
+            return "sqlite+aiosqlite:///./psih_shop_dev.db"
+        
         if self.DATABASE_URL:
             return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
