@@ -95,14 +95,18 @@ class Settings(BaseSettings):
     def get_async_database_url(self) -> str:
         """Генерирует async URL для подключения к PostgreSQL"""
         import os
-        from pathlib import Path
-        if not os.environ.get('FORCE_POSTGRES'):
-            db_path = Path(__file__).resolve().parent.parent / "psih_shop_dev.db"
-            return f"sqlite+aiosqlite:///{db_path}"
-        
         if self.DATABASE_URL:
-            return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            url = self.DATABASE_URL
+            if url.startswith("postgresql://"):
+                return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
+        
+        if os.environ.get('FORCE_POSTGRES'):
+            return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+        from pathlib import Path
+        db_path = Path(__file__).resolve().parent.parent / "psih_shop_dev.db"
+        return f"sqlite+aiosqlite:///{db_path}"
 
     def get_sync_database_url(self) -> str:
         """Генерирует sync URL для миграций и утилит."""
