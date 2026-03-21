@@ -18,6 +18,7 @@ from src.models.product import ProductStatus, Product, ProductColor, ProductSect
 from src.utils import slugify
 from src.services.catalog import build_product_public
 from src.services.media import upload_image as upload_image_to_storage
+from src.utils import copy_image_in_minio
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -389,6 +390,38 @@ async def reorder_images(
     
     await crud.reorder_product_images(db, product_color_id, image_ids)
     return
+
+@router.post("/colors/{target_color_id}/copy-images-from/{source_color_id}",
+    summary="Скопировать все изображения с одного цвета на другой",
+    status_code=200)
+async def copy_images_between_colors(
+    target_color_id: int,
+    source_color_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+    source_color = await crud.get_product_color_by_id(db, source_color_id)
+    if not source_color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source color not found")
+    target_color = await crud.get_product_color_by_id(db, target_color_id)
+    if not target_color:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target color not found")
+
+    source_images = await crud.list_product_images(db, source_color_id)
+    copied = []
+    for img in source_images:
+        try:
+            new_url = copy_image_in_minio(img.file)
+            created = await crud.create_product_image(
+                db, target_color_id, file_url=new_url, sort_order=img.sort_order
+            )
+            copied.append({"id": created.id, "file": created.file, "sort_order": created.sort_order})
+        except Exception as e:
+            logger.error(f"Failed to copy image {img.file}: {e}")
+    return {"copied": len(copied), "images": copied}
 
 @router.delete("/images/{image_id}", summary="Удалить изображение", status_code=204)
 async def delete_image(

@@ -213,6 +213,34 @@ async def upload_image_and_derivatives(file, filename: str) -> str:
         raise
 
 
+def copy_image_in_minio(source_url: str) -> str:
+    """Copy an image and all its derivatives in MinIO (server-side). Returns new public URL."""
+    if not source_url:
+        raise ValueError("source_url is empty")
+
+    parts = source_url.split('/')
+    source_object = parts[-1]
+    name, ext = os.path.splitext(source_object)
+
+    new_uid = str(uuid.uuid4())
+    new_original = f"{new_uid}{ext}"
+
+    source_objects = [source_object] + [f"{name}-{s}.webp" for s in DERIVATIVE_SUFFIXES]
+    dest_objects = [new_original] + [f"{new_uid}-{s}.webp" for s in DERIVATIVE_SUFFIXES]
+
+    client = get_minio_client()
+    bucket = settings.MINIO_BUCKET_NAME
+    from minio.commonconfig import CopySource
+
+    for src, dst in zip(source_objects, dest_objects):
+        try:
+            client.copy_object(bucket, dst, CopySource(bucket, src))
+        except Exception as e:
+            logger.warning(f"Failed to copy {src} -> {dst}: {e}")
+
+    return build_public_url(new_original)
+
+
 async def delete_image_from_minio(file_url: str):
     """Delete image and its derivatives from MinIO."""
     try:
