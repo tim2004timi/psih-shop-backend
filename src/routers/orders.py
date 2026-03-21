@@ -68,8 +68,16 @@ async def get_orders(
             detail="Admin access required"
         )
     
-    orders = await crud.get_orders_detail(db, skip=skip, limit=limit, search=search)
-    return orders
+    try:
+        orders = await crud.get_orders_detail(db, skip=skip, limit=limit, search=search)
+        return orders
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get orders: {str(e)}"
+        )
 
 @router.get("/{order_id}",
     response_model=OrderDetail,

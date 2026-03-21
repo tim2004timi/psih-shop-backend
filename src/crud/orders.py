@@ -347,9 +347,18 @@ async def get_order_detail(
     # Формируем список товаров с полной информацией
     products_detail = []
     for order_product in order_products:
-        product_size = product_size_map[order_product.product_size_id]
-        product_color = product_color_map[product_size.product_color_id]
-        product = product_map[product_color.product_id]
+        product_size = product_size_map.get(order_product.product_size_id)
+        if not product_size:
+            logger.warning(f"Order {order_id}: ProductSize {order_product.product_size_id} not found (deleted?)")
+            continue
+        product_color = product_color_map.get(product_size.product_color_id)
+        if not product_color:
+            logger.warning(f"Order {order_id}: ProductColor {product_size.product_color_id} not found (deleted?)")
+            continue
+        product = product_map.get(product_color.product_id)
+        if not product:
+            logger.warning(f"Order {order_id}: Product {product_color.product_id} not found (deleted?)")
+            continue
         
         products_detail.append(OrderProductDetail(
             id=order_product.id,

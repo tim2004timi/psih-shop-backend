@@ -31,14 +31,14 @@ router = APIRouter(prefix="/products", tags=["Products"])
 async def get_products(
     skip: int = Query(0, ge=0, description="Количество записей для пропуска"),
     limit: int = Query(100, ge=1, le=1000, description="Количество записей для возврата"),
-    status: Optional[ProductStatus] = Query(None, description="Фильтр по статусу продукта"),
+    product_status: Optional[ProductStatus] = Query(None, alias="status", description="Фильтр по статусу продукта"),
     search: Optional[str] = Query(None, description="Поиск по названию или описанию"),
     db: AsyncSession = Depends(get_db)
 ):
     """Получить список продуктов с фильтрацией"""
     try:
-        product_colors = await crud.get_products(db, skip=skip, limit=limit, status=status, search=search)
-        total = await crud.get_products_count(db, status=status, search=search)
+        product_colors = await crud.get_products(db, skip=skip, limit=limit, status=product_status, search=search)
+        total = await crud.get_products_count(db, status=product_status, search=search)
         
         # Получаем связанные продукты
         product_ids = list(set([pc.product_id for pc in product_colors]))
