@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, func, Enum, ForeignKey, CheckConstraint
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, func, Enum, ForeignKey, CheckConstraint, TypeDecorator
 from sqlalchemy.orm import relationship
 from src.models.base import Base
 import enum
@@ -11,6 +11,27 @@ class OrderStatus(str, enum.Enum):
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
     PAYMENT_FAILED = "payment_failed"
+
+
+class OrderStatusType(TypeDecorator):
+    """Stores OrderStatus as a plain VARCHAR, handles both upper/lowercase from DB."""
+    impl = String(20)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, OrderStatus):
+            return value.value
+        return str(value).lower()
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        try:
+            return OrderStatus(value.lower())
+        except ValueError:
+            return value
 
 class DeliveryMethod(str, enum.Enum):
     CDEK = "cdek"
@@ -38,7 +59,7 @@ class Order(Base):
     total_price = Column(Numeric(10, 2), nullable=False)
     delivery_method = Column(Enum(DeliveryMethod), default=DeliveryMethod.CDEK)
     status = Column(
-        Enum(OrderStatus),
+        OrderStatusType(),
         default=OrderStatus.NOT_PAID,
     )
     cdek_uuid = Column(String(100), nullable=True)
