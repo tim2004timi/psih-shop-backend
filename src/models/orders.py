@@ -38,7 +38,7 @@ class Order(Base):
     total_price = Column(Numeric(10, 2), nullable=False)
     delivery_method = Column(Enum(DeliveryMethod), default=DeliveryMethod.CDEK)
     status = Column(
-        Enum(OrderStatus, values_callable=lambda x: [e.value for e in x]),
+        Enum(OrderStatus),
         default=OrderStatus.NOT_PAID,
     )
     cdek_uuid = Column(String(100), nullable=True)
