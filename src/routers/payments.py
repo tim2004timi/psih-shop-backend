@@ -1,6 +1,6 @@
 """
-TBank Payment Integration Router
-Handles payment initialization and webhooks
+Payment Integration Router
+Handles TBank and PayPal payment initialization, webhooks, and capture.
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any
 import httpx
 import hashlib
 import logging
+import base64
 
 from src.database import get_db
 from src.auth import get_current_user, get_optional_current_user
@@ -37,6 +38,16 @@ class PaymentInitResponse(BaseModel):
     success: bool
     payment_url: Optional[str] = None
     payment_id: Optional[str] = None
+    error: Optional[str] = None
+
+class PayPalCaptureRequest(BaseModel):
+    order_id: int
+    paypal_token: str
+    access_token: Optional[str] = None
+
+class PayPalCaptureResponse(BaseModel):
+    success: bool
+    is_paid: bool = False
     error: Optional[str] = None
 
 class TBankNotification(BaseModel):
@@ -166,8 +177,103 @@ class TBankClient:
         return result
 
 
-# Global client instance
+class PayPalClient:
+    def __init__(self):
+        self.client_id = settings.PAYPAL_CLIENT_ID
+        self.client_secret = settings.PAYPAL_CLIENT_SECRET
+        self.api_url = settings.paypal_api_url
+
+    async def get_access_token(self) -> str:
+        credentials = base64.b64encode(
+            f"{self.client_id}:{self.client_secret}".encode()
+        ).decode()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.api_url}/v1/oauth2/token",
+                headers={
+                    "Authorization": f"Basic {credentials}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data={"grant_type": "client_credentials"},
+                timeout=15.0,
+            )
+            response.raise_for_status()
+            return response.json()["access_token"]
+
+    async def create_order(
+        self,
+        amount: str,
+        currency: str,
+        return_url: str,
+        cancel_url: str,
+        description: str = "",
+    ) -> dict:
+        token = await self.get_access_token()
+        payload = {
+            "intent": "CAPTURE",
+            "purchase_units": [
+                {
+                    "amount": {
+                        "currency_code": currency,
+                        "value": amount,
+                    },
+                    "description": description[:127],
+                }
+            ],
+            "payment_source": {
+                "paypal": {
+                    "experience_context": {
+                        "return_url": return_url,
+                        "cancel_url": cancel_url,
+                        "user_action": "PAY_NOW",
+                        "brand_name": "PSIH CLOTHES",
+                    }
+                }
+            },
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.api_url}/v2/checkout/orders",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def capture_order(self, paypal_order_id: str) -> dict:
+        token = await self.get_access_token()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.api_url}/v2/checkout/orders/{paypal_order_id}/capture",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={},
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def get_order(self, paypal_order_id: str) -> dict:
+        token = await self.get_access_token()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.api_url}/v2/checkout/orders/{paypal_order_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=15.0,
+            )
+            response.raise_for_status()
+            return response.json()
+
+
+# Global client instances
 tbank_client = TBankClient()
+paypal_client = PayPalClient()
 
 
 @router.post("/init", response_model=PaymentInitResponse)
@@ -179,59 +285,113 @@ async def init_payment(
     """
     Initialize payment for an order.
     Returns payment URL for redirect.
+    Supports payment_method='card' (TBank) and 'paypal' (PayPal).
     """
-    if not settings.TBANK_TERMINAL_KEY or not settings.TBANK_SECRET_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Payment system not configured"
-        )
-    
+    is_paypal = request.payment_method == 'paypal'
+
+    if is_paypal:
+        if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_CLIENT_SECRET:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="PayPal payment system not configured",
+            )
+    else:
+        if not settings.TBANK_TERMINAL_KEY or not settings.TBANK_SECRET_KEY:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Payment system not configured",
+            )
+
     result = await db.execute(select(Order).where(Order.id == request.order_id))
     order = result.scalar_one_or_none()
-    
+
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
+            detail="Order not found",
         )
-    
+
     ensure_order_access(order, current_user=current_user, access_token=request.access_token)
-    
+
     if order.status != OrderStatus.NOT_PAID:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Order already has status: {order.status.value}"
+            detail=f"Order already has status: {order.status.value}",
         )
-    
+
     try:
-        amount = int(float(order.total_price) * 100)
         description = f"Заказ #{order.id}"
-        
+
+        # --- PayPal flow ---
+        if is_paypal:
+            amount_str = f"{float(order.total_price):.2f}"
+            return_url = (
+                request.success_url
+                or f"{settings.TBANK_SUCCESS_URL}?orderId={order.id}"
+            )
+            cancel_url = (
+                request.fail_url
+                or f"{settings.TBANK_FAIL_URL}?orderId={order.id}"
+            )
+            logger.info("Initializing PayPal payment for order %s, amount: %s", order.id, amount_str)
+
+            pp_response = await paypal_client.create_order(
+                amount=amount_str,
+                currency="RUB",
+                return_url=return_url,
+                cancel_url=cancel_url,
+                description=description,
+            )
+
+            paypal_order_id = pp_response.get("id")
+            approve_link = None
+            for link in pp_response.get("links", []):
+                if link.get("rel") == "payer-action":
+                    approve_link = link.get("href")
+                    break
+
+            if paypal_order_id and approve_link:
+                order.payment_id = paypal_order_id
+                order.payment_provider = "paypal"
+                await db.commit()
+                logger.info("PayPal order created for order %s: paypal_id=%s", order.id, paypal_order_id)
+                return PaymentInitResponse(
+                    success=True,
+                    payment_url=approve_link,
+                    payment_id=paypal_order_id,
+                )
+            else:
+                logger.error("PayPal create order failed for order %s: %s", order.id, pp_response)
+                return PaymentInitResponse(success=False, error="Failed to create PayPal order")
+
+        # --- TBank flow (default) ---
+        amount = int(float(order.total_price) * 100)
+
         connection_type = None
         if request.connection_type == 'Widget':
             connection_type = 'Widget'
         elif request.data and request.data.get('connection_type') == 'Widget':
             connection_type = 'Widget'
-        
+
         receipt_items = []
         order_products_result = await db.execute(
             select(OrderProduct).where(OrderProduct.order_id == order.id)
         )
         order_products = order_products_result.scalars().all()
-        
+
         if order_products:
             size_ids = [op.product_size_id for op in order_products]
             sizes_result = await db.execute(select(ProductSize).where(ProductSize.id.in_(size_ids)))
             sizes = {ps.id: ps for ps in sizes_result.scalars().all()}
-            
+
             color_ids = [sizes[op.product_size_id].product_color_id for op in order_products if op.product_size_id in sizes]
             colors_result = await db.execute(select(ProductColor).where(ProductColor.id.in_(color_ids)))
             colors = {pc.id: pc for pc in colors_result.scalars().all()}
-            
+
             product_ids = [colors[cid].product_id for cid in color_ids if cid in colors]
             products_result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
             products = {p.id: p for p in products_result.scalars().all()}
-            
+
             for op in order_products:
                 ps = sizes.get(op.product_size_id)
                 if not ps:
@@ -242,11 +402,11 @@ async def init_payment(
                 prod = products.get(pc.product_id)
                 if not prod:
                     continue
-                
+
                 price = prod.discount_price if prod.discount_price is not None else prod.price
                 price_kopecks = int(float(price) * 100)
                 item_amount = price_kopecks * op.quantity
-                
+
                 receipt_items.append({
                     'Name': f"{pc.title} ({ps.size})"[:64],
                     'Price': price_kopecks,
@@ -256,7 +416,7 @@ async def init_payment(
                     'PaymentMethod': 'full_payment',
                     'PaymentObject': 'commodity'
                 })
-        
+
         delivery_cost_kopecks = 30000
         receipt_items.append({
             'Name': 'Доставка СДЭК',
@@ -278,7 +438,7 @@ async def init_payment(
                 'PaymentMethod': 'full_payment',
                 'PaymentObject': 'commodity'
             })
-        
+
         receipt_total = sum(item['Amount'] for item in receipt_items)
         if receipt_total != amount and receipt_total > 0:
             discount_kopecks = receipt_total - amount
@@ -296,7 +456,7 @@ async def init_payment(
                         item['Amount'] -= item_discount
                         if item['Quantity'] > 0:
                             item['Price'] = item['Amount'] // item['Quantity']
-        
+
         response = await tbank_client.init_payment(
             order_id=order.id,
             amount=amount,
@@ -308,11 +468,12 @@ async def init_payment(
             extra_data=request.data,
             receipt_items=receipt_items
         )
-        
+
         if response.get('Success') and response.get('PaymentURL'):
             order.payment_id = str(response.get('PaymentId'))
+            order.payment_provider = "tbank"
             await db.commit()
-            
+
             return PaymentInitResponse(
                 success=True,
                 payment_url=response.get('PaymentURL'),
@@ -330,7 +491,7 @@ async def init_payment(
                 success=False,
                 error=error_msg
             )
-            
+
     except Exception as e:
         logger.error(f"Payment init error: {str(e)}", exc_info=True)
         raise internal_server_error("Payment initialization failed")
@@ -405,6 +566,78 @@ async def payment_webhook(
         return "OK"  # Return OK to avoid retries
 
 
+@router.post("/paypal/capture", response_model=PayPalCaptureResponse)
+async def paypal_capture(
+    request: PayPalCaptureRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
+):
+    """
+    Capture a PayPal payment after the user approves it.
+    Called by the frontend after PayPal redirects back.
+    """
+    if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="PayPal payment system not configured",
+        )
+
+    result = await db.execute(select(Order).where(Order.id == request.order_id))
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    try:
+        ensure_order_access(order, current_user=current_user, access_token=request.access_token)
+    except HTTPException:
+        logger.info(
+            "PayPal capture access check skipped for order %s "
+            "(user arriving from PayPal redirect)",
+            request.order_id,
+        )
+
+    if order.status == OrderStatus.PAID:
+        return PayPalCaptureResponse(success=True, is_paid=True)
+
+    if order.status != OrderStatus.NOT_PAID:
+        return PayPalCaptureResponse(
+            success=False,
+            error=f"Order already has status: {order.status.value}",
+        )
+
+    try:
+        capture_resp = await paypal_client.capture_order(request.paypal_token)
+        pp_status = capture_resp.get("status")
+        logger.info(
+            "PayPal capture for order %s: paypal_id=%s status=%s",
+            order.id,
+            request.paypal_token,
+            pp_status,
+        )
+
+        if pp_status == "COMPLETED":
+            order.status = OrderStatus.PAID
+            if not order.payment_id:
+                order.payment_id = request.paypal_token
+            await db.commit()
+            return PayPalCaptureResponse(success=True, is_paid=True)
+        else:
+            order.status = OrderStatus.PAYMENT_FAILED
+            await db.commit()
+            return PayPalCaptureResponse(
+                success=False,
+                error=f"PayPal capture status: {pp_status}",
+            )
+
+    except httpx.HTTPStatusError as e:
+        logger.error("PayPal capture HTTP error for order %s: %s", order.id, e)
+        return PayPalCaptureResponse(success=False, error="PayPal capture failed")
+    except Exception as e:
+        logger.error("PayPal capture error for order %s: %s", order.id, e, exc_info=True)
+        return PayPalCaptureResponse(success=False, error="PayPal capture failed")
+
+
 @router.get("/status/{order_id}")
 async def get_payment_status(
     order_id: int,
@@ -413,11 +646,11 @@ async def get_payment_status(
     current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
     """Get payment status for an order (public endpoint for post-payment redirect).
-    If status is still not_paid but payment_id exists, queries TBank directly
-    to avoid depending solely on webhook delivery timing.
+    If status is still not_paid but payment_id exists, queries the payment
+    provider directly to avoid depending solely on webhook delivery timing.
 
     Access check is lenient: if it fails we still return the status,
-    because the user may arrive from TBank redirect without auth context
+    because the user may arrive from a payment redirect without auth context
     and the returned data (status, is_paid) is not sensitive.
     """
     try:
@@ -432,32 +665,43 @@ async def get_payment_status(
         except HTTPException:
             logger.info(
                 f"Payment status access check skipped for order {order_id} "
-                f"(user may be arriving from TBank redirect)"
+                f"(user may be arriving from payment redirect)"
             )
 
-        # Cache all values upfront so we never touch the ORM after a failed commit
         cached_order_id = order.id
         final_status = order.status
         final_payment_id = order.payment_id
+        provider = order.payment_provider
 
-        # If still not_paid but payment was initialized, check TBank directly
         if final_status == OrderStatus.NOT_PAID and final_payment_id:
             try:
-                tbank_response = await tbank_client.get_state(final_payment_id)
-                logger.info(f"TBank GetState for order {order_id}: {tbank_response}")
-                tbank_status_val = tbank_response.get('Status')
-                if tbank_status_val in ['CONFIRMED', 'AUTHORIZED']:
-                    order.status = OrderStatus.PAID
-                    final_status = OrderStatus.PAID
-                    logger.info(f"Order {order_id} updated to PAID via GetState")
-                elif tbank_status_val in ['REJECTED', 'CANCELLED', 'AUTH_FAIL', 'DEADLINE_EXPIRED']:
-                    order.status = OrderStatus.PAYMENT_FAILED
-                    final_status = OrderStatus.PAYMENT_FAILED
-                    logger.info(f"Order {order_id} updated to PAYMENT_FAILED via GetState: {tbank_status_val}")
+                if provider == "paypal":
+                    pp_resp = await paypal_client.get_order(final_payment_id)
+                    pp_status = pp_resp.get("status")
+                    logger.info("PayPal GetOrder for order %s: status=%s", order_id, pp_status)
+                    if pp_status == "COMPLETED":
+                        order.status = OrderStatus.PAID
+                        final_status = OrderStatus.PAID
+                    elif pp_status in ("VOIDED",):
+                        order.status = OrderStatus.PAYMENT_FAILED
+                        final_status = OrderStatus.PAYMENT_FAILED
+                else:
+                    tbank_response = await tbank_client.get_state(final_payment_id)
+                    logger.info(f"TBank GetState for order {order_id}: {tbank_response}")
+                    tbank_status_val = tbank_response.get('Status')
+                    if tbank_status_val in ['CONFIRMED', 'AUTHORIZED']:
+                        order.status = OrderStatus.PAID
+                        final_status = OrderStatus.PAID
+                        logger.info(f"Order {order_id} updated to PAID via GetState")
+                    elif tbank_status_val in ['REJECTED', 'CANCELLED', 'AUTH_FAIL', 'DEADLINE_EXPIRED']:
+                        order.status = OrderStatus.PAYMENT_FAILED
+                        final_status = OrderStatus.PAYMENT_FAILED
+                        logger.info(f"Order {order_id} updated to PAYMENT_FAILED via GetState: {tbank_status_val}")
+
                 if final_status != OrderStatus.NOT_PAID:
                     await db.commit()
             except Exception as e:
-                logger.warning(f"TBank GetState failed for order {order_id}: {e}")
+                logger.warning(f"Payment provider status check failed for order {order_id}: {e}")
                 try:
                     await db.rollback()
                 except Exception:

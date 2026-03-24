@@ -37,6 +37,7 @@ async def _ensure_columns():
     from sqlalchemy import text
     migrations = [
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS size_chart TEXT",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_provider VARCHAR(20)",
     ]
     try:
         async with engine.begin() as conn:

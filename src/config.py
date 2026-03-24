@@ -72,6 +72,17 @@ class Settings(BaseSettings):
     TBANK_SUCCESS_URL: str = "https://psihclothes.com/ru/order-success"
     TBANK_FAIL_URL: str = "https://psihclothes.com/ru/order-failed"
 
+    # PayPal Payment settings
+    PAYPAL_CLIENT_ID: Optional[str] = None
+    PAYPAL_CLIENT_SECRET: Optional[str] = None
+    PAYPAL_MODE: str = "sandbox"
+
+    @property
+    def paypal_api_url(self) -> str:
+        if self.PAYPAL_MODE == "live":
+            return "https://api-m.paypal.com"
+        return "https://api-m.sandbox.paypal.com"
+
     # Media upload safety
     MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024
     MAX_IMAGE_PIXELS: int = 20_000_000

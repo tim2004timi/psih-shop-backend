@@ -53,6 +53,9 @@ services:
       - TBANK_SECRET_KEY=${TBANK_SECRET_KEY}
       - TBANK_SUCCESS_URL=${TBANK_SUCCESS_URL:-https://psihclothes.com/ru/order-success}
       - TBANK_FAIL_URL=${TBANK_FAIL_URL:-https://psihclothes.com/ru/order-failed}
+      - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}
+      - PAYPAL_CLIENT_SECRET=${PAYPAL_CLIENT_SECRET}
+      - PAYPAL_MODE=${PAYPAL_MODE:-sandbox}
     depends_on:
       - postgres
       - minio

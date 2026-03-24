@@ -65,7 +65,8 @@ class Order(Base):
     cdek_uuid = Column(String(100), nullable=True)
     cdek_status = Column(String(50), nullable=True)
     cdek_number = Column(String(50), nullable=True)
-    payment_id = Column(String(50), nullable=True, index=True)  # TBank PaymentId
+    payment_id = Column(String(50), nullable=True, index=True)
+    payment_provider = Column(String(20), nullable=True)
     access_token = Column(String(64), nullable=False, unique=True, index=True)
     promo_code_id = Column(Integer, ForeignKey("promo_codes.id", ondelete="SET NULL"), nullable=True)
     discount_amount = Column(Numeric(10, 2), default=0)
