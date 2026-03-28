@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
@@ -129,6 +129,20 @@ async def get_collection_products(
             main_category=main_categories_map.get(product.id),
         ))
     return public_products
+
+
+@router.put("/{collection_id}/products/reorder", status_code=204, summary="Изменить порядок товаров в коллекции")
+async def reorder_collection_products(
+    collection_id: int,
+    product_ids: List[int] = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    
+    await crud.reorder_collection_products(db, collection_id, product_ids)
+    return
 
 
 @router.post("", response_model=CollectionResponse, summary="Создать коллекцию", status_code=201)
