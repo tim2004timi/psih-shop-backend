@@ -93,8 +93,9 @@ async def create_order(
         product_color = product_color_map[product_size.product_color_id]
         product = product_map[product_color.product_id]
         
-        # Используем discount_price если есть, иначе price
-        price = product.discount_price if product.discount_price is not None else product.price
+        effective_price = product_color.price if product_color.price is not None else product.price
+        effective_discount = product_color.discount_price if product_color.discount_price is not None else product.discount_price
+        price = effective_discount if effective_discount is not None else effective_price
         
         # Добавляем к общей стоимости (конвертируем в Decimal для точных вычислений)
         total_price += Decimal(str(price)) * Decimal(str(order_product.quantity))
@@ -360,6 +361,9 @@ async def get_order_detail(
             logger.warning(f"Order {order_id}: Product {product_color.product_id} not found (deleted?)")
             continue
         
+        eff_price = product_color.price if product_color.price is not None else product.price
+        eff_discount = product_color.discount_price if product_color.discount_price is not None else product.discount_price
+
         products_detail.append(OrderProductDetail(
             id=order_product.id,
             product_id=product.id,
@@ -368,8 +372,8 @@ async def get_order_detail(
             title=product_color.title,
             label=product_color.label,
             hex=product_color.hex,
-            price=product.price,
-            discount_price=product.discount_price,
+            price=eff_price,
+            discount_price=eff_discount,
             currency=product.currency,
             size=product_size.size,
             quantity=order_product.quantity
