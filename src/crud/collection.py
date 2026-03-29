@@ -1,8 +1,8 @@
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Dict, List, Optional
+from typing import List, Optional
 from src.models.collection import Collection, CollectionImage, CollectionProduct
-from src.models.product import Product, ProductColor
+from src.models.product import Product
 from src.schemas.collection import CollectionCreate, CollectionUpdate
 from src.utils import delete_image_from_minio
 
@@ -164,30 +164,5 @@ async def remove_product_from_collection(db: AsyncSession, collection_id: int, p
     if not link:
         return False
     db.delete(link)
-    await db.commit()
-    return True
-
-
-async def reorder_collection_products(db: AsyncSession, collection_id: int, product_ids: List[int]) -> bool:
-    """Изменить порядок товаров в коллекции. Accepts base product IDs or color IDs."""
-    result = await db.execute(
-        select(CollectionProduct).where(CollectionProduct.collection_id == collection_id)
-    )
-    links: Dict[int, CollectionProduct] = {link.product_id: link for link in result.scalars().all()}
-
-    missing = [pid for pid in product_ids if pid not in links]
-    color_map: Dict[int, int] = {}
-    if missing:
-        color_result = await db.execute(
-            select(ProductColor).where(ProductColor.id.in_(missing))
-        )
-        for color in color_result.scalars().all():
-            color_map[color.id] = color.product_id
-
-    for index, pid in enumerate(product_ids):
-        actual_pid = pid if pid in links else color_map.get(pid)
-        if actual_pid and actual_pid in links:
-            links[actual_pid].sort_order = index
-
     await db.commit()
     return True

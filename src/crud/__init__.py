@@ -23,8 +23,7 @@ from .collection import (
     get_collections, get_collections_count, get_collection_by_id, get_collection_by_slug,
     create_collection, update_collection, delete_collection,
     get_collection_images, create_collection_image, delete_collection_image,
-    get_products_by_collection, add_product_to_collection, remove_product_from_collection,
-    reorder_collection_products
+    get_products_by_collection, add_product_to_collection, remove_product_from_collection
 )
 from .orders import (
     create_order, get_orders, get_order_by_id, get_order_detail, get_orders_detail, update_order
