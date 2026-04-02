@@ -69,8 +69,8 @@ class Settings(BaseSettings):
     TBANK_SECRET_KEY: Optional[str] = None
     TBANK_API_URL: str = "https://securepay.tinkoff.ru/v2"
     # These can be overridden in .env for production domain
-    TBANK_SUCCESS_URL: str = "https://psihclothes.com/ru/order-success"
-    TBANK_FAIL_URL: str = "https://psihclothes.com/ru/order-failed"
+    TBANK_SUCCESS_URL: str = "https://psihclothes.com/order-success"
+    TBANK_FAIL_URL: str = "https://psihclothes.com/order-failed"
 
     # PayPal Payment settings
     PAYPAL_CLIENT_ID: Optional[str] = None
