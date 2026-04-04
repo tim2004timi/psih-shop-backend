@@ -113,7 +113,10 @@ class CDEKClient:
         order_id: int,
         shipment_point: str,
         delivery_point: str,
-        db: AsyncSession
+        db: AsyncSession,
+        *,
+        tariff_code: int = 136,
+        forbid_inspection: bool = False,
     ) -> str:
         """
         Создать заказ в CDEK и сохранить UUID в БД
@@ -219,7 +222,7 @@ class CDEKClient:
         order_data = {
             "type": 1,  # Всегда 1
             "number": str(order_id),  # order_id
-            "tariff_code": 136,  # Посылка склад-склад 136
+            "tariff_code": tariff_code,
             "shipment_point": shipment_point,  # Код ПВЗ отправления
             "delivery_point": delivery_point,  # Код ПВЗ доставки
             "recipient": {
@@ -242,6 +245,11 @@ class CDEKClient:
         # Добавляем email получателя, если есть
         if email:
             order_data["recipient"]["email"] = email
+
+        if forbid_inspection:
+            order_data["services"] = [
+                {"code": "BAN_ATTACHMENT_INSPECTION"}
+            ]
         
         # Отправляем запрос в CDEK
         try:

@@ -6,6 +6,11 @@ from src.crud.site_settings import get_setting, set_setting
 from src.schemas.site_settings import SiteSettingPublic, SiteSettingUpdate
 from src.services.media import upload_image
 import json
+from pydantic import BaseModel
+
+
+class NewsletterSubscribeRequest(BaseModel):
+    email: str
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -40,4 +45,31 @@ async def upload_banner(
     
     file_url = await upload_image(file)
     return {"url": file_url}
+
+
+@router.post("/newsletter/subscribe", summary="Подписка на email-рассылку")
+async def subscribe_newsletter(
+    payload: NewsletterSubscribeRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    key = "newsletter_subscribers"
+    existing_setting = await get_setting(db, key)
+    subscribers = []
+
+    if existing_setting and existing_setting.value:
+        try:
+            subscribers = json.loads(existing_setting.value)
+            if not isinstance(subscribers, list):
+                subscribers = []
+        except Exception:
+            subscribers = []
+
+    normalized_email = str(payload.email).strip().lower()
+    if "@" not in normalized_email or "." not in normalized_email:
+        raise HTTPException(status_code=400, detail="Invalid email format")
+    if normalized_email not in subscribers:
+        subscribers.append(normalized_email)
+        await set_setting(db, key, json.dumps(subscribers, ensure_ascii=False))
+
+    return {"success": True, "message": "Email subscribed"}
 

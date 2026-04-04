@@ -11,6 +11,7 @@ class OrderStatus(str, enum.Enum):
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
     PAYMENT_FAILED = "payment_failed"
+    REFUNDED = "refunded"
 
 
 class OrderStatusType(TypeDecorator):

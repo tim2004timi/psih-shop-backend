@@ -261,6 +261,15 @@ async def update_order(
         logger.error(f"Error updating order {order_id}: {str(e)}", exc_info=True)
         raise
 
+
+async def delete_order(db: AsyncSession, order_id: int) -> bool:
+    order = await get_order_by_id(db, order_id)
+    if not order:
+        return False
+    await db.delete(order)
+    await db.commit()
+    return True
+
 async def get_order_detail(
     db: AsyncSession,
     order_id: int,

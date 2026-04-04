@@ -832,5 +832,6 @@ async def get_product_by_category_and_slug(
         images=[{"file": i.file, "alt": None, "w": None, "h": None, "color": None, "sort_order": i.sort_order} for i in images],
         meta=ProductMeta(care=product.meta_care, shipping=product.meta_shipping, returns=product.meta_returns),
         status=product.status or ProductStatus.IN_STOCK,
+        created_at=product_color.created_at,
         custom_sections=validated_sections
     )

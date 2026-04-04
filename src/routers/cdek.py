@@ -13,13 +13,20 @@ from src.config import settings
 from src.auth import get_current_user, get_optional_current_user
 from src.models.orders import Order
 from src import crud
-from pydantic import ValidationError
+from pydantic import ValidationError, BaseModel, Field
 from src.services.errors import bad_gateway, internal_server_error, not_found
 from src.services.order_access import ensure_admin, ensure_order_access
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/cdek", tags=["CDEK"])
+
+
+class CDEKCalculateRequest(BaseModel):
+    from_location: Dict[str, Any] = Field(..., description="Точка отправления")
+    to_location: Dict[str, Any] = Field(..., description="Точка доставки")
+    packages: List[Dict[str, Any]] = Field(..., min_length=1, description="Список мест")
+    tariff_code: Optional[int] = Field(default=None, description="Код тарифа CDEK")
 
 
 def _build_webhook_url(path: str) -> str:
@@ -78,6 +85,29 @@ async def suggest_cities(
         raise bad_gateway("CDEK API error")
     except Exception as e:
         logger.error(f"Unexpected error in suggest_cities: {str(e)}", exc_info=True)
+        raise internal_server_error()
+
+
+@router.post(
+    "/calculate",
+    summary="Рассчитать стоимость доставки CDEK",
+    description="Возвращает тарифы и стоимость доставки по маршруту."
+)
+async def calculate_delivery_cost(
+    payload: CDEKCalculateRequest,
+) -> Dict[str, Any]:
+    try:
+        cdek_client = get_cdek_client()
+        return await cdek_client.calculate_delivery_cost(
+            from_location=payload.from_location,
+            to_location=payload.to_location,
+            packages=payload.packages,
+            tariff_code=payload.tariff_code,
+        )
+    except CDEKError:
+        raise bad_gateway("CDEK API error")
+    except Exception as e:
+        logger.error(f"Unexpected error in calculate_delivery_cost: {str(e)}", exc_info=True)
         raise internal_server_error()
 
 

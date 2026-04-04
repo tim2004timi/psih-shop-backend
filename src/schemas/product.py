@@ -132,6 +132,7 @@ class ProductPublic(BaseModel):
     images: List[ProductImageOut] = Field(default_factory=list)
     meta: ProductMeta
     status: ProductStatus
+    created_at: Optional[datetime] = None
     custom_sections: List[ProductSectionOut] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

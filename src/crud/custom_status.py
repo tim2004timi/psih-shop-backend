@@ -32,6 +32,6 @@ async def delete_custom_status(db: AsyncSession, status_id: int) -> bool:
     status = await get_custom_status_by_id(db, status_id)
     if not status:
         return False
-    db.delete(status)
+    await db.delete(status)
     await db.commit()
     return True

@@ -152,6 +152,32 @@ async def update_order(
     
     return order_detail
 
+
+@router.delete(
+    "/{order_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удалить заказ",
+    description="Удаляет заказ. Доступно только администраторам."
+)
+async def delete_order(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+
+    ok = await crud.delete_order(db, order_id)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    return
+
 @router.post("/test_add_order_to_cdek",
     summary="Тестовый endpoint: добавить заказ в CDEK",
     description="Создает заказ в CDEK и возвращает cdek_uuid. Тестовый endpoint.")
@@ -159,6 +185,8 @@ async def test_add_order_to_cdek(
     order_id: int = Query(..., description="ID заказа"),
     shipment_point: str = Query("MSK5", description="Код ПВЗ отправления"),
     delivery_point: str = Query(..., description="Код ПВЗ доставки"),
+    tariff_code: int = Query(136, description="Тариф CDEK"),
+    forbid_inspection: bool = Query(False, description="Запрет осмотра вложения"),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -188,10 +216,12 @@ async def test_add_order_to_cdek(
             order_id=order_id,
             shipment_point=shipment_point,
             delivery_point=delivery_point,
-            db=db
+            db=db,
+            tariff_code=tariff_code,
+            forbid_inspection=forbid_inspection,
         )
         
-        return {"cdek_uuid": cdek_uuid}
+        return {"cdek_uuid": cdek_uuid, "message": "Заказ зарегистрирован в СДЭК"}
         
     except CDEKError as e:
         raise HTTPException(

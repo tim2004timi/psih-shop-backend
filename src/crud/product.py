@@ -155,7 +155,6 @@ async def check_slug_collision(db: AsyncSession, slug: str, product_id: int, exc
         .where(
             ProductColor.slug == slug,
             ProductCategory.category_id.in_(category_ids),
-            Product.id != product_id 
         )
     )
     

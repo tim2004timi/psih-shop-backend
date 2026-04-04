@@ -67,5 +67,6 @@ def build_product_public(
             returns=getattr(product, "meta_returns", None),
         ),
         status=product.status or ProductStatus.IN_STOCK,
+        created_at=getattr(color, "created_at", None),
         custom_sections=validate_sections(sections),
     )

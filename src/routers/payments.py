@@ -553,7 +553,7 @@ async def payment_webhook(
             
         elif tbank_status in ['REFUNDED', 'PARTIAL_REFUNDED']:
             # Refund
-            order.status = OrderStatus.CANCELLED
+            order.status = OrderStatus.REFUNDED
             logger.info(f"Order {order_id} refunded")
         
         await db.commit()
@@ -697,6 +697,10 @@ async def get_payment_status(
                         order.status = OrderStatus.PAYMENT_FAILED
                         final_status = OrderStatus.PAYMENT_FAILED
                         logger.info(f"Order {order_id} updated to PAYMENT_FAILED via GetState: {tbank_status_val}")
+                    elif tbank_status_val in ['REFUNDED', 'PARTIAL_REFUNDED']:
+                        order.status = OrderStatus.REFUNDED
+                        final_status = OrderStatus.REFUNDED
+                        logger.info(f"Order {order_id} updated to REFUNDED via GetState: {tbank_status_val}")
 
                 if final_status != OrderStatus.NOT_PAID:
                     await db.commit()
